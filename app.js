@@ -4,6 +4,8 @@
   const STORAGE_KEY = "superhuman-routine-v1";
   const JOURNAL_DB = "superhuman-journal-v1";
   const JOURNAL_STORE = "photos";
+  const SYNC_ENDPOINT = "https://femxqncjoppccywvecux.supabase.co/functions/v1/superhuman-sync";
+  const SYNC_MAX_PLAINTEXT_BYTES = 2.75 * 1024 * 1024;
   const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
   const MAX_PHOTO_EDGE = 1440;
   const MAX_TASKS = 25;
@@ -249,6 +251,280 @@
     } finally {
       database.close();
     }
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToBytes(value) {
+    if (typeof value !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+      throw new Error("The encrypted backup contains invalid data.");
+    }
+    const padded = value + "=".repeat((4 - value.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+
+  function setSyncStatus(message, isError = false) {
+    $("sync-status").textContent = message;
+    $("sync-status").dataset.error = String(isError);
+  }
+
+  function syncCodeIsValid(code = $("sync-code").value.trim()) {
+    return /^[A-Za-z0-9_-]{43}$/.test(code);
+  }
+
+  function updateSyncControls() {
+    const busy = $("sync-dialog").dataset.busy === "true";
+    const valid = syncCodeIsValid();
+    $("copy-sync-code").disabled = !valid || busy;
+    $("upload-sync").disabled = !valid || busy;
+    $("restore-sync").disabled = !valid || busy;
+    $("delete-sync").disabled = !valid || busy;
+    $("generate-sync-code").disabled = busy;
+  }
+
+  async function deriveSyncCredentials() {
+    if (!syncCodeIsValid()) throw new Error("Enter a valid 43-character sync code, or generate one here.");
+    if (!crypto?.subtle) throw new Error("This browser does not support secure encrypted sync.");
+
+    const code = $("sync-code").value.trim();
+    const raw = base64ToBytes(code.replace(/-/g, "+").replace(/_/g, "/"));
+    if (raw.length !== 32) throw new Error("The sync code is invalid.");
+    const material = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveBits"]);
+    raw.fill(0);
+    const derived = new Uint8Array(await crypto.subtle.deriveBits({
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new TextEncoder().encode("superhuman-sync-v1"),
+      info: new TextEncoder().encode("Superhuman private sync")
+    }, material, 512));
+    const encryptionKey = await crypto.subtle.importKey(
+      "raw",
+      derived.slice(0, 32),
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"]
+    );
+    const identifierDigest = await crypto.subtle.digest("SHA-256", derived.slice(32));
+    const syncId = [...new Uint8Array(identifierDigest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+    derived.fill(0);
+    return { encryptionKey, syncId };
+  }
+
+  async function requestSync(action, credentials, encryptedBlob) {
+    const body = { action, syncId: credentials.syncId };
+    if (encryptedBlob) body.encryptedBlob = encryptedBlob;
+    const response = await fetch(SYNC_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(body)
+    });
+    let result;
+    try {
+      result = await response.json();
+    } catch (error) {
+      console.error("The private sync service returned an unreadable response.", error);
+      throw new Error("The private sync service returned an unreadable response. Try again.");
+    }
+    if (!response.ok) {
+      throw new Error(typeof result.error === "string" ? result.error : `Sync failed (${response.status}). Try again.`);
+    }
+    return result;
+  }
+
+  async function createEncryptedBackup(encryptionKey) {
+    const photos = [];
+    for (const entry of state.journal || []) {
+      if (!entry.photoKey) continue;
+      const photo = await readJournalPhoto(entry.photoKey);
+      if (!photo) throw new Error("A saved journal photo is missing on this device. The backup was not uploaded.");
+      photos.push({
+        key: entry.photoKey,
+        type: photo.type || "image/jpeg",
+        data: bytesToBase64(new Uint8Array(await photo.arrayBuffer()))
+      });
+    }
+
+    const plaintext = new TextEncoder().encode(JSON.stringify({
+      version: 1,
+      state,
+      photos
+    }));
+    if (plaintext.byteLength > SYNC_MAX_PLAINTEXT_BYTES) {
+      throw new Error("This backup is too large to sync in one encrypted transfer. Remove some journal photos and try again.");
+    }
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, encryptionKey, plaintext);
+    return { v: 1, iv: bytesToBase64(iv), ciphertext: bytesToBase64(new Uint8Array(ciphertext)) };
+  }
+
+  async function decryptBackup(encryptedBlob, encryptionKey) {
+    if (!encryptedBlob || encryptedBlob.v !== 1 || typeof encryptedBlob.iv !== "string" || typeof encryptedBlob.ciphertext !== "string") {
+      throw new Error("The cloud backup has an unsupported format.");
+    }
+    const iv = base64ToBytes(encryptedBlob.iv);
+    const ciphertext = base64ToBytes(encryptedBlob.ciphertext);
+    if (iv.length !== 12 || ciphertext.length > SYNC_MAX_PLAINTEXT_BYTES + 16) {
+      throw new Error("The cloud backup is invalid or too large.");
+    }
+
+    let plaintext;
+    try {
+      plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, encryptionKey, ciphertext);
+    } catch (error) {
+      console.error("The cloud backup could not be decrypted with this sync code.", error);
+      throw new Error("This backup could not be decrypted. Check that you entered the original sync code.");
+    }
+    let document;
+    try {
+      document = JSON.parse(new TextDecoder().decode(plaintext));
+    } catch (error) {
+      console.error("The decrypted sync backup is not valid JSON.", error);
+      throw new Error("The decrypted backup is damaged and was not restored.");
+    }
+    if (!document || document.version !== 1 || !document.state || !Array.isArray(document.photos)) {
+      throw new Error("The cloud backup has an unsupported format.");
+    }
+    return document;
+  }
+
+  function isRecord(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function validateSyncedState(value) {
+    if (!isRecord(value) || !Array.isArray(value.tasks) || value.tasks.length > MAX_TASKS
+      || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal)) {
+      throw new Error("The backup data is incomplete or invalid; nothing was restored.");
+    }
+    if (value.tasks.some(task => !isRecord(task) || typeof task.id !== "string" || typeof task.name !== "string")) {
+      throw new Error("The backup contains an invalid routine task; nothing was restored.");
+    }
+    for (const [date, completed] of Object.entries(value.completions)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(completed) || completed.some(id => typeof id !== "string")) {
+        throw new Error("The backup contains invalid completion history; nothing was restored.");
+      }
+    }
+    for (const [date, routine] of Object.entries(value.routines)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(routine) || routine.some(id => typeof id !== "string")) {
+        throw new Error("The backup contains invalid routine history; nothing was restored.");
+      }
+    }
+    if (value.journal.some(entry => !isRecord(entry)
+      || typeof entry.id !== "string"
+      || typeof entry.createdAt !== "string"
+      || !Number.isFinite(Date.parse(entry.createdAt))
+      || typeof entry.text !== "string"
+      || !(entry.photoKey === null || typeof entry.photoKey === "string"))) {
+      throw new Error("The backup contains an invalid journal entry; nothing was restored.");
+    }
+    return {
+      tasks: value.tasks.map(task => ({ ...task })).slice(0, MAX_TASKS),
+      completions: value.completions,
+      routines: value.routines,
+      smoking: normalizeSmoking(value.smoking),
+      growthPoints: Number.isFinite(value.growthPoints) && value.growthPoints >= 0 ? value.growthPoints : 0,
+      journal: value.journal.map(entry => ({ ...entry })),
+      name: typeof value.name === "string" ? value.name : "Alex"
+    };
+  }
+
+  async function restoreEncryptedBackup(document) {
+    const nextState = validateSyncedState(document.state);
+    const referencedPhotos = new Set(nextState.journal.map(entry => entry.photoKey).filter(Boolean));
+    const photos = new Map();
+    for (const photo of document.photos) {
+      if (!isRecord(photo) || typeof photo.key !== "string" || typeof photo.type !== "string"
+        || !photo.type.startsWith("image/") || typeof photo.data !== "string" || photos.has(photo.key)) {
+        throw new Error("The backup contains an invalid journal photo; nothing was restored.");
+      }
+      const bytes = base64ToBytes(photo.data);
+      if (bytes.byteLength > MAX_PHOTO_BYTES) {
+        throw new Error("A journal photo in this backup is too large; nothing was restored.");
+      }
+      photos.set(photo.key, new Blob([bytes], { type: photo.type }));
+    }
+    for (const photoKey of referencedPhotos) {
+      if (!photos.has(photoKey)) throw new Error("A journal photo is missing from this backup; nothing was restored.");
+    }
+    if ([...photos.keys()].some(key => !referencedPhotos.has(key))) {
+      throw new Error("The backup contains an unlinked journal photo; nothing was restored.");
+    }
+
+    const remappedKeys = new Map();
+    const stagedPhotos = [];
+    for (const [key, blob] of photos) {
+      const localKey = `photo-${crypto.randomUUID()}`;
+      remappedKeys.set(key, localKey);
+      stagedPhotos.push([localKey, blob]);
+    }
+    nextState.journal = nextState.journal.map(entry => ({
+      ...entry,
+      photoKey: entry.photoKey ? remappedKeys.get(entry.photoKey) : null
+    }));
+
+    const storedKeys = [];
+    const previousState = state;
+    let stateSaved = false;
+    try {
+      for (const [key, blob] of stagedPhotos) {
+        await storeJournalPhoto(key, blob);
+        storedKeys.push(key);
+      }
+      state = nextState;
+      if (!save()) {
+        throw new Error("The backup could not be saved on this device. Free some browser storage and try again.");
+      }
+      stateSaved = true;
+      render();
+      await renderJournal();
+    } catch (error) {
+      state = previousState;
+      if (stateSaved && !save()) {
+        console.error("Could not restore local data after an incomplete sync restore.");
+        error = new Error("The restore failed and the previous local data could not be fully restored. Reload the app and check your data.");
+      }
+      for (const key of storedKeys) {
+        try {
+          await removeJournalPhoto(key);
+        } catch (cleanupError) {
+          console.error("Could not clean up an incomplete sync restore.", cleanupError);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async function runSyncOperation(operation) {
+    if ($("sync-dialog").dataset.busy === "true") return;
+    $("sync-dialog").dataset.busy = "true";
+    updateSyncControls();
+    try {
+      await operation();
+    } catch (error) {
+      console.error("Private sync failed.", error);
+      setSyncStatus(error instanceof Error ? error.message : "Private sync failed. Try again.", true);
+    } finally {
+      $("sync-dialog").dataset.busy = "false";
+      updateSyncControls();
+    }
+  }
+
+  function formattedSyncTime(value) {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime())
+      ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date)
+      : "just now";
   }
 
   function optimizeJournalPhoto(file) {
@@ -1187,7 +1463,59 @@
       button.disabled = false;
     }
   });
-  $("profile-button").addEventListener("click", () => showToast("Your routine is saved privately on this device."));
+  $("profile-button").addEventListener("click", () => {
+    updateSyncControls();
+    $("sync-dialog").showModal();
+  });
+  $("close-sync-dialog").addEventListener("click", () => $("sync-dialog").close());
+  $("sync-code").addEventListener("input", updateSyncControls);
+  $("generate-sync-code").addEventListener("click", () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    $("sync-code").value = bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    bytes.fill(0);
+    updateSyncControls();
+    setSyncStatus("A new private code was generated. Save it before leaving this page; it will not be stored by the app.");
+  });
+  $("copy-sync-code").addEventListener("click", async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
+      await navigator.clipboard.writeText($("sync-code").value.trim());
+      setSyncStatus("Sync code copied. Keep it private and store it somewhere safe.");
+    } catch (error) {
+      console.error("Could not copy the private sync code.", error);
+      setSyncStatus(error instanceof Error ? error.message : "Could not copy the sync code.", true);
+    }
+  });
+  $("upload-sync").addEventListener("click", () => {
+    if (!window.confirm("Upload this device's routine, quit history, journal, and photos? This replaces the cloud backup for this sync code; it does not merge devices.")) return;
+    runSyncOperation(async () => {
+      setSyncStatus("Encrypting your data on this device…");
+      const credentials = await deriveSyncCredentials();
+      const encryptedBlob = await createEncryptedBackup(credentials.encryptionKey);
+      const result = await requestSync("put", credentials, encryptedBlob);
+      setSyncStatus(`Encrypted backup uploaded ${formattedSyncTime(result.updatedAt)}.`);
+    });
+  });
+  $("restore-sync").addEventListener("click", () => {
+    if (!window.confirm("Restore the cloud backup to this device? This replaces this device's routine, quit history, journal, and photos.")) return;
+    runSyncOperation(async () => {
+      setSyncStatus("Checking for an encrypted cloud backup…");
+      const credentials = await deriveSyncCredentials();
+      const result = await requestSync("get", credentials);
+      if (!result.exists) throw new Error("No cloud backup was found for this sync code.");
+      const document = await decryptBackup(result.encrypted_blob, credentials.encryptionKey);
+      await restoreEncryptedBackup(document);
+      setSyncStatus(`Cloud backup restored from ${formattedSyncTime(result.updated_at)}. Local data was kept intact until the restore completed.`);
+    });
+  });
+  $("delete-sync").addEventListener("click", () => {
+    if (!window.confirm("Permanently delete the encrypted cloud backup for this sync code? Data saved on this device will remain unchanged.")) return;
+    runSyncOperation(async () => {
+      const credentials = await deriveSyncCredentials();
+      const result = await requestSync("delete", credentials);
+      setSyncStatus(result.deleted ? "The encrypted cloud backup was deleted. Data on this device was not changed." : "No cloud backup was found for this sync code.");
+    });
+  });
   $("quit-setup-form").addEventListener("submit", event => {
     event.preventDefault();
     const settings = readSmokingSettings();

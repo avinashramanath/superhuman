@@ -21,7 +21,7 @@
         <button class="icon-button install-button" id="install-button" type="button" aria-label="Install app" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4h14v-4"/></svg>
         </button>
-        <button class="avatar-button" id="profile-button" type="button" aria-label="Your profile">A</button>
+        <button class="avatar-button" id="profile-button" type="button" aria-label="Private sync settings">A</button>
       </header>
 
       <section class="view is-active" id="today-view" aria-labelledby="today-title">
@@ -114,7 +114,7 @@
         <div class="page-intro">
           <p class="eyebrow">A MOMENT, KEPT FOR YOU</p>
           <h1 id="journal-title">Your journal.</h1>
-          <p>Notice the small shifts. These pages are yours alone, saved on this device.</p>
+          <p>Notice the small shifts. These pages are saved on this device unless you choose encrypted sync.</p>
         </div>
         <section class="journal-compose content-card">
           <div class="section-heading compact-heading"><div><h2 id="journal-form-title">A note to yourself</h2><p id="journal-today-label"></p></div></div>
@@ -140,7 +140,7 @@
             </div>
             <input id="journal-photo-file" class="visually-hidden" type="file" accept="image/*">
             <div class="journal-photo-row">
-              <button class="journal-photo-button" id="journal-photo-button" type="button"><span aria-hidden="true">▧</span> Add a photo <small>stored only on this device</small></button>
+              <button class="journal-photo-button" id="journal-photo-button" type="button"><span aria-hidden="true">▧</span> Add a photo <small>saved on this device</small></button>
               <span class="journal-photo-hint">Up to 10 MB · resized for privacy & space</span>
             </div>
             <div class="journal-photo-preview" id="journal-photo-preview" hidden>
@@ -158,7 +158,7 @@
         </section>
         <div class="journal-list-heading"><div><p class="eyebrow">YOUR PRIVATE PAGES</p><h2>Small moments, kept.</h2></div><span id="journal-entry-count">0 entries</span></div>
         <div class="journal-entries" id="journal-entries" aria-live="polite"></div>
-        <p class="journal-privacy-note"><span aria-hidden="true">⌑</span> Journal words and photos stay on this device. They are not uploaded or synced.</p>
+        <p class="journal-privacy-note"><span aria-hidden="true">⌑</span> By default, journal words and photos stay on this device. Optional sync uploads only an encrypted copy.</p>
       </section>
 
       <section class="view" id="history-view" aria-labelledby="history-title" hidden>
@@ -378,6 +378,30 @@
       </div>
       <p>This entry and its saved photo will be removed from this device. This cannot be undone.</p>
       <div class="dialog-actions"><button class="secondary-button" id="cancel-journal-delete" type="button">Keep it</button><button class="quit-primary-button" id="confirm-journal-delete" type="button">Delete entry</button></div>
+    </dialog>
+
+    <dialog class="sync-dialog" id="sync-dialog" aria-labelledby="sync-title">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">YOUR DATA, YOUR KEY</p><h2 id="sync-title">Private device sync</h2></div>
+        <button class="icon-button sync-close-button" id="close-sync-dialog" type="button" aria-label="Close">×</button>
+      </div>
+      <p class="sync-intro">Sync is off until you choose an action. Your routine, quit history, journal, and photos are encrypted on this device before upload. Project Zero stores only an encrypted backup, an opaque sync identifier, and its update time.</p>
+      <label class="field-label" for="sync-code">Private sync code</label>
+      <div class="sync-code-row">
+        <input id="sync-code" type="text" maxlength="43" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Generate a code or enter one from another device">
+        <button class="sync-secondary-button" id="generate-sync-code" type="button">Generate</button>
+      </div>
+      <div class="sync-code-actions">
+        <button class="sync-text-button" id="copy-sync-code" type="button" disabled>Copy sync code</button>
+        <span>Keep it somewhere safe. Anyone with this code can access your encrypted sync space.</span>
+      </div>
+      <div class="sync-actions">
+        <button class="sync-primary-button" id="upload-sync" type="button" disabled>Upload this device</button>
+        <button class="sync-secondary-button" id="restore-sync" type="button" disabled>Restore from cloud</button>
+        <button class="sync-danger-button" id="delete-sync" type="button" disabled>Delete cloud backup</button>
+      </div>
+      <p class="sync-status" id="sync-status" role="status" aria-live="polite">Sync is off. Your data stays on this device until you add a code and choose a sync action.</p>
+      <p class="sync-footnote">The sync code is not saved by this app; re-enter it after closing or refreshing. Upload replaces the cloud copy, and restore replaces this device's data. Both actions ask before replacing anything.</p>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite">
