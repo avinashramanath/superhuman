@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#070b14">
+    <meta name="description" content="Build your daily rhythm. Watch your personal progress core evolve with every streak.">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icon.svg">
+    <link rel="stylesheet" href="./styles.css">
+    <title>Superhuman — your day, your pace</title>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Superhuman home">
+          <span class="brand-mark" aria-hidden="true">✳</span>
+          <span>superhuman</span>
+        </a>
+        <button class="icon-button install-button" id="install-button" type="button" aria-label="Install app" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4h14v-4"/></svg>
+        </button>
+        <button class="avatar-button" id="profile-button" type="button" aria-label="Your profile">A</button>
+      </header>
+
+      <section class="view is-active" id="today-view" aria-labelledby="today-title">
+        <div class="section-heading">
+          <div>
+            <h2>Your routine</h2>
+            <p id="routine-caption">A rhythm that feels like you.</p>
+          </div>
+          <button class="text-button" id="manage-button" type="button">Edit routine</button>
+        </div>
+
+        <div id="routine-list" class="routine-list" aria-live="polite"></div>
+        <button class="add-task-button" id="add-task-button" type="button">
+          <span class="add-symbol" aria-hidden="true">+</span>
+          <span>Add a little something</span>
+        </button>
+        <p class="swipe-hint"><span aria-hidden="true">←</span> Swipe a task left when you're done</p>
+
+        <section class="progress-card" aria-label="Today's progress">
+          <div class="progress-top">
+            <div>
+              <p class="card-eyebrow">YOUR DAILY MOMENTUM</p>
+              <p class="progress-number"><span id="completed-count">0</span><span class="progress-divider">/</span><span id="total-count">0</span><span class="progress-label">done</span></p>
+            </div>
+            <div class="progress-ring" id="progress-ring" role="img" aria-label="0% complete">
+              <span id="progress-percent">0%</span>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+          <p class="progress-message" id="progress-message">Small steps count. Let's get started.</p>
+        </section>
+        <div class="welcome-row">
+          <div>
+            <p class="eyebrow" id="today-date"></p>
+            <h1 id="today-title">Build your<br><span>own momentum.</span></h1>
+          </div>
+          <div class="sun-mark" aria-hidden="true">✳</div>
+        </div>
+      </section>
+
+      <section class="view" id="better-view" aria-labelledby="better-title" hidden>
+        <div class="page-intro">
+          <p class="eyebrow">YOU, IN THE MAKING</p>
+          <h1 id="better-title">Better, by<br><span class="neon-title">your own design.</span></h1>
+          <p>Every task, every full day, every return adds to who you are becoming.</p>
+        </div>
+        <section class="evolution-card" id="evolution-card" data-stage="0" aria-label="Your evolving progress being">
+          <div class="evolution-copy">
+            <p class="card-eyebrow">YOUR PROGRESS CORE</p>
+            <h2 id="evolution-title">A new signal</h2>
+            <p id="evolution-copy">Every action adds a little more light. Nothing you've built disappears.</p>
+            <div class="evolution-streak"><strong id="best-streak">0</strong><span>DAY BEST RUN</span></div>
+            <div class="evolution-track" aria-label="Lifetime growth toward the next evolution"><span id="evolution-fill"></span></div>
+            <p class="evolution-next" id="evolution-next">Complete a task to awaken your core</p>
+          </div>
+          <svg class="evolution-orb" viewBox="0 0 220 220" role="img" aria-labelledby="orb-title orb-description">
+            <title id="orb-title">Your evolving progress being</title>
+            <desc id="orb-description">A glowing geometric being grows brighter with each task, day, and streak.</desc>
+            <defs>
+              <radialGradient id="core-fill" cx="38%" cy="32%">
+                <stop offset="0%" stop-color="#f2ffff"/>
+                <stop offset="35%" stop-color="#62f3ff"/>
+                <stop offset="100%" stop-color="#1552a6"/>
+              </radialGradient>
+              <filter id="core-glow" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="7" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <circle class="orb-halo" cx="110" cy="110" r="77"/>
+            <ellipse class="orb-orbit orbit-one" cx="110" cy="110" rx="98" ry="38"/>
+            <ellipse class="orb-orbit orbit-two" cx="110" cy="110" rx="84" ry="54"/>
+            <path class="orb-constellation" d="m44 75 29-34 34 19 41-24 34 39-12 49 23 30-45 33-38-16-37 25-35-36 13-38z"/>
+            <circle class="orb-satellite satellite-one" cx="28" cy="110" r="4"/>
+            <circle class="orb-satellite satellite-two" cx="176" cy="48" r="3"/>
+            <circle class="orb-satellite satellite-three" cx="169" cy="171" r="5"/>
+            <polygon class="orb-core" points="110,54 153,79 153,131 110,156 67,131 67,79" fill="url(#core-fill)" filter="url(#core-glow)"/>
+            <path class="orb-facet" d="m110 54 0 51 43-26m-43 26-43-26m43 26v51m0-51 43 26m-43-26-43 26"/>
+            <circle class="orb-center" cx="110" cy="105" r="8"/>
+          </svg>
+        </section>
+        <section class="better-stats" id="better-stats" aria-label="Your growth so far"></section>
+        <section class="content-card better-note">
+          <span class="milestone-icon" aria-hidden="true">✦</span>
+          <p>Progress isn't a perfect streak. It's every small promise you keep—and every time you begin again.</p>
+        </section>
+      </section>
+
+      <section class="view journal-view" id="journal-view" aria-labelledby="journal-title" hidden>
+        <div class="page-intro">
+          <p class="eyebrow">A MOMENT, KEPT FOR YOU</p>
+          <h1 id="journal-title">Your journal.</h1>
+          <p>Notice the small shifts. These pages are yours alone, saved on this device.</p>
+        </div>
+        <section class="journal-compose content-card">
+          <div class="section-heading compact-heading"><div><h2 id="journal-form-title">A note to yourself</h2><p id="journal-today-label"></p></div></div>
+          <form id="journal-entry-form">
+            <label class="sr-only" for="journal-text">Write a journal entry</label>
+            <textarea id="journal-text" maxlength="3000" rows="5" placeholder="What are you noticing today? No need to make it perfect." ></textarea>
+            <div class="journal-form-meta">
+              <span class="journal-field-label">How are you feeling?</span>
+              <div class="mood-picker" id="mood-picker" role="group" aria-label="Choose a mood">
+                <button class="mood-option is-selected" type="button" data-mood="steady" aria-pressed="true"><span>◉</span> Steady</button>
+                <button class="mood-option" type="button" data-mood="hopeful" aria-pressed="false"><span>✦</span> Hopeful</button>
+                <button class="mood-option" type="button" data-mood="proud" aria-pressed="false"><span>↗</span> Proud</button>
+                <button class="mood-option" type="button" data-mood="tender" aria-pressed="false"><span>☾</span> Tender</button>
+                <button class="mood-option" type="button" data-mood="heavy" aria-pressed="false"><span>·</span> Heavy</button>
+                <button class="mood-option" type="button" data-mood="calm" aria-pressed="false"><span>〰</span> Calm</button>
+                <button class="mood-option" type="button" data-mood="joyful" aria-pressed="false"><span>☀</span> Joyful</button>
+                <button class="mood-option" type="button" data-mood="anxious" aria-pressed="false"><span>〽</span> Anxious</button>
+                <button class="mood-option" type="button" data-mood="tired" aria-pressed="false"><span>☁</span> Tired</button>
+                <button class="mood-option" type="button" data-mood="grateful" aria-pressed="false"><span>♡</span> Grateful</button>
+                <button class="mood-option" type="button" data-mood="frustrated" aria-pressed="false"><span>⌁</span> Frustrated</button>
+                <button class="mood-option" type="button" data-mood="curious" aria-pressed="false"><span>✧</span> Curious</button>
+              </div>
+            </div>
+            <input id="journal-photo-file" class="visually-hidden" type="file" accept="image/*">
+            <div class="journal-photo-row">
+              <button class="journal-photo-button" id="journal-photo-button" type="button"><span aria-hidden="true">▧</span> Add a photo <small>stored only on this device</small></button>
+              <span class="journal-photo-hint">Up to 10 MB · resized for privacy & space</span>
+            </div>
+            <div class="journal-photo-preview" id="journal-photo-preview" hidden>
+              <img id="journal-photo-image" alt="Selected journal photo preview">
+              <button type="button" id="journal-remove-photo">Remove photo</button>
+            </div>
+            <p class="journal-error" id="journal-error" role="status" hidden></p>
+            <div class="journal-actions">
+              <button class="journal-cancel-button" id="journal-cancel-edit" type="button" hidden>Cancel edit</button>
+              <span></span>
+              <span class="journal-char-count" id="journal-char-count">0 / 3000</span>
+              <button class="journal-save-button" id="journal-save-button" type="submit">Save entry</button>
+            </div>
+          </form>
+        </section>
+        <div class="journal-list-heading"><div><p class="eyebrow">YOUR PRIVATE PAGES</p><h2>Small moments, kept.</h2></div><span id="journal-entry-count">0 entries</span></div>
+        <div class="journal-entries" id="journal-entries" aria-live="polite"></div>
+        <p class="journal-privacy-note"><span aria-hidden="true">⌑</span> Journal words and photos stay on this device. They are not uploaded or synced.</p>
+      </section>
+
+      <section class="view" id="history-view" aria-labelledby="history-title" hidden>
+        <div class="page-intro">
+          <p class="eyebrow">LOOK HOW FAR YOU'VE COME</p>
+          <h1 id="history-title">Your history</h1>
+          <p>A missed day pauses a streak, not your progress.</p>
+        </div>
+        <section class="stat-grid" id="history-stats"></section>
+        <p class="streak-guidance" id="streak-guidance"></p>
+        <section class="content-card">
+          <div class="section-heading compact-heading"><div><h2>Recent days</h2><p>Your last 14 days</p></div></div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+        <section class="content-card milestone-card">
+          <span class="milestone-icon" aria-hidden="true">✦</span>
+          <div><p class="card-eyebrow">NEXT RECORD</p><h2 id="next-milestone-title">Your first full day</h2><p id="next-milestone-copy">Complete your routine to begin your streak.</p></div>
+        </section>
+      </section>
+
+      <section class="view" id="badges-view" aria-labelledby="badges-title" hidden>
+        <div class="page-intro">
+          <p class="eyebrow">PROOF OF YOUR PROGRESS</p>
+          <h1 id="badges-title">Earn your<br>next signal.</h1>
+          <p>From first steps to a year of momentum, every milestone stays yours.</p>
+        </div>
+        <div class="badge-summary" id="badge-summary"></div>
+        <div class="badge-grid" id="badge-grid"></div>
+      </section>
+
+      <section class="view quit-view" id="quit-view" aria-labelledby="quit-title" hidden>
+        <div class="page-intro">
+          <p class="eyebrow">A DIFFERENT KIND OF STRENGTH</p>
+          <h1 id="quit-title">Conquer<br><span class="quit-title-accent">smoking.</span></h1>
+          <p>One craving, one moment, one choice at a time. This path is yours.</p>
+        </div>
+        <section class="quit-hero" id="quit-hero" data-stage="0" aria-label="Your smoke-free journey">
+          <div class="quit-orb-wrap">
+            <svg class="quit-orb" viewBox="0 0 220 220" role="img" aria-labelledby="quit-orb-title quit-orb-desc">
+              <title id="quit-orb-title">Your smoke-free ember</title>
+              <desc id="quit-orb-desc">A warm light grows more radiant with your smoke-free time.</desc>
+              <defs>
+                <radialGradient id="ember-fill" cx="42%" cy="32%">
+                  <stop offset="0%" stop-color="#fff5dc"/>
+                  <stop offset="36%" stop-color="#ffc16e"/>
+                  <stop offset="100%" stop-color="#a34870"/>
+                </radialGradient>
+                <filter id="ember-glow" x="-100%" y="-100%" width="300%" height="300%">
+                  <feGaussianBlur stdDeviation="8" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+              <circle class="ember-halo" cx="110" cy="110" r="77"/>
+              <ellipse class="ember-orbit ember-orbit-one" cx="110" cy="110" rx="98" ry="37"/>
+              <ellipse class="ember-orbit ember-orbit-two" cx="110" cy="110" rx="82" ry="54"/>
+              <path class="ember-constellation" d="m110 26 37 29 44 14 4 43-22 42-38 27-43 13-30-31-26-40 9-44 31-37z"/>
+              <circle class="ember-satellite ember-satellite-one" cx="32" cy="110" r="4"/>
+              <circle class="ember-satellite ember-satellite-two" cx="172" cy="53" r="3"/>
+              <polygon class="ember-core" points="110,57 151,81 151,129 110,153 69,129 69,81" fill="url(#ember-fill)" filter="url(#ember-glow)"/>
+              <path class="ember-facet" d="m110 57v48l41-24m-41 24L69 81m41 24v48m0-48 41 24m-41-24-41 24"/>
+              <circle class="ember-center" cx="110" cy="105" r="7"/>
+            </svg>
+          </div>
+          <div class="quit-hero-copy">
+            <p class="quit-kicker" id="quit-kicker">YOUR NEXT CHAPTER</p>
+            <h2 id="quit-stage-title">Ready when you are</h2>
+            <p id="quit-stage-copy">Start your smoke-free timer whenever you feel ready. There is no perfect moment.</p>
+          </div>
+        </section>
+
+        <section class="quit-start-panel content-card" id="quit-start-panel">
+          <p class="card-eyebrow">SET YOUR OWN STARTING POINT</p>
+          <h2>Begin your smoke-free clock</h2>
+          <p class="quit-panel-copy">This stays on this device. You can update your plan anytime.</p>
+          <form id="quit-setup-form">
+            <label class="field-label" for="quit-start-time">When did you stop?</label>
+            <input id="quit-start-time" type="datetime-local" required>
+            <div class="quit-settings-row">
+              <div><label class="field-label" for="cigarettes-per-day">Cigarettes per day (optional)</label><input id="cigarettes-per-day" type="number" min="1" max="100" inputmode="numeric" placeholder="e.g. 10"></div>
+              <div><label class="field-label" for="pack-price">Pack price (optional)</label><input id="pack-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 12"></div>
+            </div>
+            <label class="field-label" for="cigarettes-per-pack">Cigarettes per pack</label>
+            <input id="cigarettes-per-pack" type="number" min="1" max="100" value="20" inputmode="numeric">
+            <button class="quit-primary-button" type="submit">Start my next chapter <span aria-hidden="true">→</span></button>
+          </form>
+        </section>
+
+        <div id="quit-active-panel" hidden>
+          <section class="quit-clock-card">
+            <p class="quit-kicker">TIME SINCE YOUR LAST CIGARETTE</p>
+            <div class="quit-clock" id="quit-clock" aria-live="polite">
+              <div><strong id="quit-days">0</strong><span>days</span></div><i>:</i>
+              <div><strong id="quit-hours">00</strong><span>hours</span></div><i>:</i>
+              <div><strong id="quit-minutes">00</strong><span>minutes</span></div>
+            </div>
+            <p class="quit-clock-caption" id="quit-clock-caption">Your time is yours. One moment at a time.</p>
+            <div class="quit-stats">
+              <div><strong id="quit-best">0h</strong><span>best smoke-free run</span></div>
+              <div><strong id="quit-lapses">0</strong><span>slips logged</span></div>
+              <div id="quit-saved-stat" hidden><strong id="quit-saved">0</strong><span>cigarettes not smoked this run*</span></div>
+              <div id="quit-saved-money-stat" hidden><strong id="quit-saved-money">0</strong><span>estimated savings*</span></div>
+            </div>
+          </section>
+          <section class="quit-journey-card" aria-label="Smoke-free milestones and badges">
+            <p class="quit-kicker">YOUR SMOKE-FREE MILESTONES</p>
+            <article class="current-quit-badge" id="current-quit-badge"></article>
+            <div class="quit-next-grid">
+              <article class="quit-next-card">
+                <p class="quit-kicker">NEXT HEALTH MILESTONE</p>
+                <h3 id="quit-next-milestone-title"></h3>
+                <strong id="quit-next-milestone-time"></strong>
+                <p id="quit-next-milestone-copy"></p>
+              </article>
+              <article class="quit-next-card">
+                <p class="quit-kicker">NEXT BADGE</p>
+                <h3 id="quit-next-badge-title"></h3>
+                <strong id="quit-next-badge-time"></strong>
+                <p id="quit-next-badge-copy"></p>
+              </article>
+            </div>
+            <div class="quit-badge-heading"><h3>Your quit badges</h3><span id="quit-badge-count"></span></div>
+            <div class="quit-badge-grid" id="quit-badge-grid"></div>
+            <p class="quit-milestone-source">Health timeline adapted from the FNHA “The Benefits of Quitting Smoking” poster. Individual benefits can vary.</p>
+          </section>
+          <p class="quit-estimate-note" id="quit-estimate-note">*Estimates use the daily amount and pack price you entered. They are approximate.</p>
+          <section class="craving-card">
+            <div><p class="quit-kicker">A CRAVING IS A MOMENT, NOT A COMMAND</p><h2>Give the urge a little space.</h2><p>Try a short breathing pause, change your surroundings, or reach out to someone you trust.</p></div>
+            <button class="craving-button" id="craving-button" type="button">Ride it out · 2 min <span aria-hidden="true">↗</span></button>
+            <div class="craving-timer" id="craving-timer" hidden><strong id="craving-countdown">02:00</strong><span>Easy breath in. Slow breath out.</span><button type="button" id="craving-done">Finish pause</button></div>
+          </section>
+          <section class="quit-slip-card">
+            <div><h2>If you smoked, you can start again.</h2><p>A slip doesn't cancel your effort. Your best run and milestones stay with you.</p></div>
+            <button id="log-slip-button" type="button">Log a slip</button>
+          </section>
+          <details class="quit-edit-details" id="quit-edit-details">
+            <summary>Edit your quit plan</summary>
+            <form id="quit-edit-form">
+              <label class="field-label" for="edit-quit-start-time">Smoke-free start</label>
+              <input id="edit-quit-start-time" type="datetime-local" required>
+              <div class="quit-settings-row">
+                <div><label class="field-label" for="edit-cigarettes-per-day">Cigarettes per day</label><input id="edit-cigarettes-per-day" type="number" min="1" max="100" inputmode="numeric"></div>
+                <div><label class="field-label" for="edit-pack-price">Pack price</label><input id="edit-pack-price" type="number" min="0.01" step="0.01" inputmode="decimal"></div>
+              </div>
+              <label class="field-label" for="edit-cigarettes-per-pack">Cigarettes per pack</label>
+              <input id="edit-cigarettes-per-pack" type="number" min="1" max="100" inputmode="numeric">
+              <button class="quit-secondary-button" type="submit">Save plan</button>
+            </form>
+          </details>
+          <section class="quit-history content-card">
+            <div class="section-heading compact-heading"><div><h2>Every restart counts</h2><p>Your private check-in history</p></div></div>
+            <div id="quit-history-list"></div>
+          </section>
+        </div>
+        <p class="quit-disclaimer">This tracker offers encouragement, not medical advice. A health professional or local stop-smoking service can help you choose support that fits you.</p>
+      </section>
+
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <button class="nav-item is-current" type="button" data-view="today" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5 10 18l10-12"/></svg><span>Today</span>
+        </button>
+        <button class="nav-item" type="button" data-view="better">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16m0-8 7-4M12 12l-7 4"/></svg><span>Better me</span>
+        </button>
+        <button class="nav-item" type="button" data-view="history">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>History</span>
+        </button>
+        <button class="nav-item" type="button" data-view="badges">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg><span>Badges</span>
+        </button>
+        <button class="nav-item quit-nav-item" type="button" data-view="quit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 4 4 6 4 9a4 4 0 1 1-8 0c0-1.6.7-3.1 2-4.7-.1 2 1.1 2.8 2 3.2.5-2.7.7-4.7 0-7.5Z"/><path d="M4 19c4 2.5 12 2.5 16 0"/></svg><span>Quit</span>
+        </button>
+        <button class="nav-item" type="button" data-view="journal">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm0 0a3 3 0 0 0-3 3v12a3 3 0 0 1 3-3h10M9 8h5m-5 4h5"/></svg><span>Journal</span>
+        </button>
+      </nav>
+    </main>
+
+    <dialog class="task-dialog" id="task-dialog" aria-labelledby="dialog-title">
+      <form id="task-form">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">MAKE IT YOURS</p><h2 id="dialog-title">Add a routine task</h2></div>
+          <button class="icon-button close-dialog" type="button" aria-label="Close">×</button>
+        </div>
+        <label class="field-label" for="task-name">Task name</label>
+        <input id="task-name" name="name" maxlength="60" placeholder="e.g. Take a mindful walk" required>
+        <label class="field-label" for="task-group">Group</label>
+        <input id="task-group" name="group" maxlength="30" list="group-options" placeholder="e.g. Mind & body">
+        <datalist id="group-options"></datalist>
+        <div class="emoji-picker">
+          <span class="field-label">Pick an icon</span>
+          <div id="emoji-options" class="emoji-options"></div>
+        </div>
+        <p class="form-note" id="task-form-note">You can add up to 25 tasks to your daily routine.</p>
+        <div class="dialog-actions">
+          <button class="delete-button" id="delete-task-button" type="button" hidden>Delete task</button>
+          <span class="action-spacer"></span>
+          <button class="secondary-button close-dialog" type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save task</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="lapse-dialog" id="lapse-dialog" aria-labelledby="lapse-title">
+      <div class="dialog-heading">
+        <div><p class="quit-kicker">NO JUDGMENT HERE</p><h2 id="lapse-title">A moment doesn't undo you.</h2></div>
+        <button class="icon-button" id="close-lapse-dialog" type="button" aria-label="Close">×</button>
+      </div>
+      <p>Logging this will restart your current timer. Your best smoke-free run and everything you've learned stay here. Ready?</p>
+      <div class="dialog-actions"><button class="secondary-button" id="cancel-lapse" type="button">Not now</button><button class="quit-primary-button" id="confirm-lapse" type="button">Log and reset timer</button></div>
+    </dialog>
+
+    <dialog class="lapse-dialog journal-delete-dialog" id="journal-delete-dialog" aria-labelledby="journal-delete-title">
+      <div class="dialog-heading">
+        <div><p class="quit-kicker">YOUR WORDS, YOUR CHOICE</p><h2 id="journal-delete-title">Delete this page?</h2></div>
+        <button class="icon-button" id="close-journal-delete" type="button" aria-label="Close">×</button>
+      </div>
+      <p>This entry and its saved photo will be removed from this device. This cannot be undone.</p>
+      <div class="dialog-actions"><button class="secondary-button" id="cancel-journal-delete" type="button">Keep it</button><button class="quit-primary-button" id="confirm-journal-delete" type="button">Delete entry</button></div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite">
+      <span id="toast-message">Task completed!</span>
+      <button id="undo-button" type="button">Undo</button>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>
