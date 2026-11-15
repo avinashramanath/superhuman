@@ -25,6 +25,14 @@
       </header>
 
       <section class="view is-active" id="today-view" aria-labelledby="today-title">
+        <section class="today-spirit-card" aria-label="Your living progress core">
+          <div class="today-spirit-copy">
+            <p class="card-eyebrow">YOUR LIVING SPIRIT</p>
+            <h2>Every action adds light.</h2>
+            <button type="button" class="visualise-button" data-visualise>Visualise your progress <span aria-hidden="true">↗</span></button>
+          </div>
+          <svg id="today-core" class="today-living-core" viewBox="0 0 400 400" role="img" aria-label="Your living progress core"></svg>
+        </section>
         <div class="section-heading">
           <div>
             <h2>Your routine</h2>
@@ -64,7 +72,7 @@
           <p class="eyebrow">YOU, IN THE MAKING</p>
           <h1 id="better-title">Your progress.</h1>
         </div>
-        <section class="evolution-card" id="evolution-card" data-stage="0" aria-label="Your evolving progress being">
+        <section class="evolution-card" id="evolution-card" aria-label="Your evolving progress being">
           <div class="evolution-copy">
             <p class="card-eyebrow">YOUR PROGRESS CORE</p>
             <h2 id="evolution-title">A new signal</h2>
@@ -72,32 +80,9 @@
             <div class="evolution-streak"><strong id="best-streak">0</strong><span>DAY BEST RUN</span></div>
             <div class="evolution-track" aria-label="Lifetime growth toward the next evolution"><span id="evolution-fill"></span></div>
             <p class="evolution-next" id="evolution-next">Complete a task to awaken your core</p>
+            <button type="button" class="visualise-button" data-visualise>Visualise your progress <span aria-hidden="true">↗</span></button>
           </div>
-          <svg class="evolution-orb" viewBox="0 0 220 220" role="img" aria-labelledby="orb-title orb-description">
-            <title id="orb-title">Your evolving progress being</title>
-            <desc id="orb-description">A glowing geometric being grows brighter with each task, day, and streak.</desc>
-            <defs>
-              <radialGradient id="core-fill" cx="38%" cy="32%">
-                <stop offset="0%" stop-color="#f2ffff"/>
-                <stop offset="35%" stop-color="#62f3ff"/>
-                <stop offset="100%" stop-color="#1552a6"/>
-              </radialGradient>
-              <filter id="core-glow" x="-100%" y="-100%" width="300%" height="300%">
-                <feGaussianBlur stdDeviation="7" result="blur"/>
-                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-            </defs>
-            <circle class="orb-halo" cx="110" cy="110" r="77"/>
-            <ellipse class="orb-orbit orbit-one" cx="110" cy="110" rx="98" ry="38"/>
-            <ellipse class="orb-orbit orbit-two" cx="110" cy="110" rx="84" ry="54"/>
-            <path class="orb-constellation" d="m44 75 29-34 34 19 41-24 34 39-12 49 23 30-45 33-38-16-37 25-35-36 13-38z"/>
-            <circle class="orb-satellite satellite-one" cx="28" cy="110" r="4"/>
-            <circle class="orb-satellite satellite-two" cx="176" cy="48" r="3"/>
-            <circle class="orb-satellite satellite-three" cx="169" cy="171" r="5"/>
-            <polygon class="orb-core" points="110,54 153,79 153,131 110,156 67,131 67,79" fill="url(#core-fill)" filter="url(#core-glow)"/>
-            <path class="orb-facet" d="m110 54 0 51 43-26m-43 26-43-26m43 26v51m0-51 43 26m-43-26-43 26"/>
-            <circle class="orb-center" cx="110" cy="105" r="8"/>
-          </svg>
+          <svg id="better-core" class="evolution-orb" viewBox="0 0 400 400" role="img" aria-label="Your living progress core"></svg>
         </section>
         <section class="better-stats" id="better-stats" aria-label="Your growth so far"></section>
         <section class="content-card">
@@ -326,6 +311,35 @@
       </nav>
     </main>
 
+    <dialog class="celebration-dialog" id="celebration-dialog" aria-labelledby="celebration-title">
+      <div class="celebration-content">
+        <header class="celebration-header">
+          <div><p class="card-eyebrow">YOUR JOURNEY IN LIGHT</p><h2 id="celebration-title">Look how far you've come.</h2></div>
+          <button type="button" class="celebration-close" id="celebration-close" aria-label="Close progress visualisation">×</button>
+        </header>
+        <div class="celebration-scene">
+          <p class="celebration-day" id="celebration-day">Your beginning</p>
+          <p class="celebration-date" id="celebration-date"></p>
+          <svg id="celebration-core" viewBox="0 0 400 400" role="img" aria-label="Your living progress core"></svg>
+          <p class="celebration-message" id="celebration-message">Every small action is part of your story.</p>
+        </div>
+        <section class="celebration-achievements" aria-labelledby="celebration-achievements-title">
+          <p class="card-eyebrow">MOMENTS THAT MATTER</p>
+          <h3 id="celebration-achievements-title">Your progress, in practice.</h3>
+          <div id="celebration-stats" class="celebration-stats"></div>
+          <p id="celebration-badges" class="celebration-badges"></p>
+          <p class="celebration-history-note" id="celebration-history-note"></p>
+        </section>
+        <div class="celebration-actions">
+          <button type="button" id="celebration-skip">Skip to today</button>
+          <button type="button" id="celebration-replay" hidden>Replay your journey</button>
+          <button type="button" id="celebration-preview" hidden>See Day 21 in full glory</button>
+          <button type="button" id="celebration-return" hidden>Return to my progress</button>
+        </div>
+        <p id="celebration-status" class="sr-only" role="status" aria-live="polite"></p>
+      </div>
+    </dialog>
+
     <dialog class="task-dialog" id="task-dialog" aria-labelledby="dialog-title">
       <form id="task-form">
         <div class="dialog-heading">
@@ -374,6 +388,7 @@
     <script src="./sync-core.js"></script>
     <script src="./sync-transport.js"></script>
     <script src="./auto-sync.js"></script>
+    <script src="./living-core.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

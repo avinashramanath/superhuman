@@ -68,27 +68,6 @@ h1, h2 { font-family: Manrope, sans-serif; }
 .evolution-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); transition: width .6s cubic-bezier(.2,.8,.2,1); }
 .evolution-next { min-height: 10px; margin: 7px 0 0; font-size: 8px; letter-spacing: .2px; }
 .evolution-orb { position: absolute; top: 50%; right: -17px; width: 58%; max-width: 232px; aspect-ratio: 1; overflow: visible; transform: translateY(-50%); }
-.orb-halo { fill: rgba(47, 176, 235, .025); stroke: rgba(97, 243, 255, .1); stroke-width: .8; }
-.orb-orbit { fill: none; stroke: rgba(93, 220, 247, .28); stroke-width: .85; transform-origin: 110px 110px; transition: stroke .4s, stroke-width .4s; }
-.orbit-one { animation: orbit 19s linear infinite; }
-.orbit-two { stroke: rgba(93, 220, 247, .2); animation: orbit 25s linear infinite reverse; }
-.orb-constellation { fill: none; stroke: rgba(97, 243, 255, .1); stroke-width: .8; transition: stroke .4s; }
-.orb-satellite { fill: var(--cyan); filter: drop-shadow(0 0 4px var(--cyan)); opacity: .48; }
-.satellite-one { transform-origin: 110px 110px; animation: orbit 12s linear infinite; }
-.satellite-two { transform-origin: 110px 110px; animation: orbit 16s linear infinite reverse; }
-.satellite-three { transform-origin: 110px 110px; animation: orbit 21s linear infinite; }
-.orb-core { stroke: rgba(196, 255, 255, .8); stroke-width: 1.1; filter: drop-shadow(0 0 var(--core-aura, 5px) rgba(97, 243, 255, .78)); transition: filter .4s, stroke-width .4s; }
-.orb-facet { fill: none; stroke: rgba(231, 255, 255, .64); stroke-width: .8; }
-.orb-center { fill: #f3ffff; filter: drop-shadow(0 0 7px white); }
-.evolution-card[data-stage="1"] .orb-halo, .evolution-card[data-stage="1"] .orb-constellation { stroke: rgba(97, 243, 255, .22); }
-.evolution-card[data-stage="2"] .orb-halo, .evolution-card[data-stage="2"] .orb-constellation { stroke: rgba(97, 243, 255, .34); }
-.evolution-card[data-stage="3"] .orb-halo, .evolution-card[data-stage="3"] .orb-constellation { stroke: rgba(97, 243, 255, .52); }
-.evolution-card[data-stage="4"] .orb-halo, .evolution-card[data-stage="4"] .orb-constellation { stroke: rgba(97, 243, 255, .7); }
-.evolution-card[data-stage="5"] .orb-halo, .evolution-card[data-stage="5"] .orb-constellation { stroke: rgba(157, 226, 255, .93); stroke-width: 1.4; }
-.evolution-card[data-stage="3"] .orb-core, .evolution-card[data-stage="4"] .orb-core, .evolution-card[data-stage="5"] .orb-core { stroke-width: 1.6; }
-.evolution-card[data-stage="5"] .orb-satellite { opacity: 1; }
-.evolution-card.is-pulsing .orb-halo { animation: core-pulse .8s ease-out; }
-.evolution-card.is-pulsing .orb-core { animation: core-flare .8s ease-out; }
 .progress-card { padding: 18px 19px 16px; border: 1px solid rgba(97, 243, 255, .18); border-radius: 16px; background: linear-gradient(118deg, #102436, #101b2a); color: var(--ink); box-shadow: inset 0 1px rgba(203, 249, 255, .04); }
 .progress-card .card-eyebrow { margin-bottom: 5px; color: #81a8bb; }
 .progress-top { display: flex; align-items: center; justify-content: space-between; }
@@ -580,8 +559,6 @@ button:focus-visible, a:focus-visible, [role="button"]:focus-visible { outline: 
   .quit-next-card h3 { min-height: 0; }
   .quit-settings-row { gap: 10px; }
 }
-@keyframes core-pulse { 50% { stroke: rgba(220, 255, 255, .95); stroke-width: 2; } }
-@keyframes core-flare { 50% { filter: drop-shadow(0 0 19px rgba(97, 243, 255, 1)); } }
 @keyframes ember-pulse { 50% { stroke: rgba(255, 239, 209, .95); stroke-width: 1.8; } }
 body.quit-mode { background: radial-gradient(ellipse at 50% 13%, rgba(145, 70, 91, .2), transparent 31rem), radial-gradient(ellipse at 88% 40%, rgba(124, 81, 135, .12), transparent 26rem), #0b0b15; }
 body.quit-mode .brand-mark { border-color: rgba(255, 192, 130, .58); color: var(--quit-amber); box-shadow: inset 0 0 13px rgba(255, 188, 128, .08), 0 0 17px rgba(255, 174, 126, .13); }
@@ -590,4 +567,46 @@ body.quit-mode .nav-item.is-current { color: #ffc478; filter: drop-shadow(0 0 6p
 body.quit-mode .install-button { color: #ffc478; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+.today-spirit-card { display: flex; align-items: center; justify-content: space-between; min-height: 155px; margin: 4px 0 18px; padding: 15px 12px 15px 18px; overflow: hidden; border: 1px solid rgba(97, 243, 255, .22); border-radius: 20px; background: radial-gradient(circle at 82% 50%, #17435b 0, transparent 48%), linear-gradient(130deg, #102436, #0b1828); }
+.today-spirit-copy { position: relative; z-index: 1; flex: 1; min-width: 0; }
+.today-spirit-copy .card-eyebrow { color: #8edbe7; }
+.today-spirit-copy h2 { margin: 0 0 9px; font-size: 16px; line-height: 1.3; letter-spacing: -.4px; }
+.today-living-core { flex: 0 0 140px; width: 140px; height: 140px; }
+.visualise-button { min-height: 44px; padding: 9px 12px; border: 1px solid rgba(139, 235, 246, .44); border-radius: 11px; background: rgba(25, 100, 125, .48); color: #d7faff; font-size: 12px; font-weight: 700; line-height: 1.3; text-align: left; cursor: pointer; }
+.visualise-button span { margin-left: 4px; color: #8ff5ff; }
+.evolution-card { flex-direction: column-reverse; align-items: stretch; padding: 20px; }
+.evolution-card::before { pointer-events: none; }
+.evolution-copy, .evolution-copy > p:not(.card-eyebrow):not(.evolution-next) { width: 100%; max-width: none; }
+.evolution-copy .visualise-button { margin-top: 13px; }
+.evolution-orb { position: relative; top: auto; right: auto; align-self: center; width: min(100%, 275px); max-width: 275px; transform: none; }
+body.celebration-open { overflow: hidden; }
+.celebration-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100%; height: 100dvh; max-height: none; margin: 0; padding: 0; overflow-y: auto; border: 0; background: radial-gradient(ellipse at 50% 30%, #123a50 0, #0a192a 42%, #070c18 100%); color: var(--ink); }
+.celebration-dialog::backdrop { background: #070c18; }
+.celebration-content { width: min(100%, 520px); margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom)); }
+.celebration-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.celebration-header .card-eyebrow { color: #8edbe7; }
+.celebration-header h2 { margin: 0; font-size: clamp(22px, 6vw, 29px); line-height: 1.2; letter-spacing: -.8px; }
+.celebration-close { flex: 0 0 44px; width: 44px; height: 44px; border: 1px solid rgba(153, 226, 238, .3); border-radius: 50%; background: #112b3c; color: #d3faff; font-size: 27px; line-height: 1; cursor: pointer; }
+.celebration-scene { display: flex; flex-direction: column; align-items: center; margin: 26px 0 18px; text-align: center; }
+.celebration-day { margin: 0; color: #d4fbff; font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
+.celebration-date { min-height: 19px; margin: 5px 0 0; color: #a4c4d2; font-size: 12px; }
+#celebration-core { width: min(100%, 280px); height: auto; margin: -4px 0; }
+.celebration-message { max-width: 330px; margin: 0; color: #b9dbe4; font-size: 14px; line-height: 1.5; }
+.celebration-achievements { padding: 18px; border: 1px solid rgba(143, 226, 239, .2); border-radius: 18px; background: rgba(12, 31, 47, .76); }
+.celebration-achievements h3 { margin: 0 0 14px; font-size: 16px; }
+.celebration-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.celebration-stat { min-width: 0; padding: 12px 8px; border-radius: 12px; background: rgba(70, 165, 190, .1); text-align: center; }
+.celebration-stat strong { display: block; color: #a6f7fa; font-size: 21px; }
+.celebration-stat span { display: block; color: #a8c1ce; font-size: 11px; line-height: 1.35; }
+.celebration-badges, .celebration-history-note { margin: 13px 0 0; color: #b8d5de; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.celebration-history-note { color: #96b1c0; }
+.celebration-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.celebration-actions button { min-height: 48px; padding: 10px; border: 1px solid rgba(141, 232, 241, .4); border-radius: 12px; background: #143b50; color: #e3fcff; font-size: 12px; font-weight: 700; line-height: 1.35; cursor: pointer; }
+@media (max-width: 365px) {
+  .today-spirit-card { padding-left: 13px; }
+  .today-living-core { flex-basis: 120px; width: 120px; height: 120px; }
+  .evolution-card { padding: 16px; }
+  .evolution-copy { width: 100%; }
 }

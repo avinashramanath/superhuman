@@ -166,6 +166,14 @@
   let taskDrag = null;
   let suppressTaskClickUntil = 0;
   let lastSmokeMinute = null;
+  const todayCore = SuperhumanLivingCore.createController($("today-core"));
+  const betterCore = SuperhumanLivingCore.createController($("better-core"));
+  const celebrationCore = SuperhumanLivingCore.createController($("celebration-core"));
+  const celebrationMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let celebration = null;
+  let celebrationFrame = null;
+  let celebrationLastFrame = null;
+  let celebrationOpener = null;
   const JOURNAL_MOODS = {
     steady: ["◉", "Steady"],
     hopeful: ["✦", "Hopeful"],
@@ -527,8 +535,6 @@
     let stageIndex = stages.reduce((current, threshold, index) => score >= threshold ? index : current, 0);
     const stage = EVOLUTION_STAGES[stageIndex];
     const next = stages[stageIndex + 1];
-    $("evolution-card").dataset.stage = stageIndex;
-    $("evolution-card").style.setProperty("--core-aura", `${5 + Math.min(15, score / 10)}px`);
     $("evolution-title").textContent = stage.title;
     $("evolution-copy").textContent = score
       ? `${totalCompletions(state)} small actions and ${fullDays(state)} full days have added to your light. Every restart counts.`
@@ -539,17 +545,17 @@
     $("evolution-next").textContent = next
       ? `${next - score} more growth points to ${EVOLUTION_STAGES[stageIndex + 1].title}`
       : "Your core has reached full radiance · keep growing";
-    $("orb-description").textContent = `${stage.title}. ${totalCompletions(state)} routine actions, ${fullDays(state)} full days, and a best streak of ${record} days have shaped this progress being.`;
+    const visualDay = SuperhumanLivingCore.visualDayForScore(score);
+    todayCore.setDay(visualDay);
+    betterCore.setDay(visualDay);
   }
 
   function renderBetterStats() {
-    const todayDone = completionFor(localDateKey()).length;
     $("better-stats").innerHTML = `
       <article class="better-stat"><span class="better-stat-icon">✳</span><strong>${totalCompletions(state)}</strong><span>little actions completed</span></article>
       <article class="better-stat"><span class="better-stat-icon">☀</span><strong>${fullDays(state)}</strong><span>full routine days</span></article>
       <article class="better-stat"><span class="better-stat-icon">↗</span><strong>${streakAt(state)}</strong><span>current day run</span></article>
       <article class="better-stat"><span class="better-stat-icon">✦</span><strong>${bestStreak(state)}</strong><span>longest day run</span></article>`;
-    $("evolution-card").style.setProperty("--daily-pulse", `${Math.min(1, todayDone / Math.max(1, state.tasks.length))}`);
   }
 
   async function renderJournal() {
@@ -645,15 +651,15 @@
     const current = completionFor(today);
     const wasDone = current.includes(id);
     if (wasDone === done) return;
+    const previousDay = SuperhumanLivingCore.visualDayForScore(growthScore(state));
     state.completions[today] = done ? [...current, id] : current.filter(item => item !== id);
-    if (done) {
-      $("evolution-card").classList.remove("is-pulsing");
-      void $("evolution-card").offsetWidth;
-      $("evolution-card").classList.add("is-pulsing");
-      setTimeout(() => $("evolution-card").classList.remove("is-pulsing"), 850);
-    }
     save();
     render();
+    if (done) {
+      const currentDay = SuperhumanLivingCore.visualDayForScore(growthScore(state));
+      todayCore.celebrate(previousDay, currentDay);
+      betterCore.celebrate(previousDay, currentDay);
+    }
   }
 
   function groupLabel(group) {
@@ -747,8 +753,194 @@
       view.classList.toggle("is-active", current);
     }
     document.body.classList.toggle("quit-mode", name === "quit");
+    updateCoreVisibility();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+
+  function updateCoreVisibility() {
+    const showingCelebration = $("celebration-dialog").open;
+    todayCore.setActive(!showingCelebration && !$("today-view").hidden);
+    betterCore.setActive(!showingCelebration && !$("better-view").hidden);
+    celebrationCore.setActive(showingCelebration);
+  }
+
+  function renderCelebrationStats(stats) {
+    $("celebration-stats").innerHTML = [
+      [stats.tasks, "routine actions"],
+      [stats.days, "full days"],
+      [stats.streak, "best day run"]
+    ].map(([value, label]) => `<div class="celebration-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
+    const earned = BADGES.filter(badge => badge.test(state, stats));
+    const highlights = earned.slice(-3).map(badge => badge.title);
+    $("celebration-badges").textContent = earned.length
+      ? `${earned.length} routine badges · ${highlights.join(" · ")}`
+      : "Your first routine badge is waiting for you.";
+  }
+
+  function stopCelebrationPlayback() {
+    if (celebrationFrame !== null) cancelAnimationFrame(celebrationFrame);
+    celebrationFrame = null;
+    celebrationLastFrame = null;
+  }
+
+  function finishCelebration() {
+    stopCelebrationPlayback();
+    if (!celebration) return;
+    celebration.mode = "finished";
+    celebrationCore.setDay(celebration.actualDay);
+    const point = SuperhumanLivingCore.timelineAt(celebration.timeline, 1);
+    $("celebration-day").textContent = point ? `Day ${point.number} · Today` : "Your journey starts here";
+    $("celebration-date").textContent = point
+      ? new Intl.DateTimeFormat(undefined, { month: "long", day: "numeric", year: "numeric" }).format(new Date(`${point.date}T12:00:00`))
+      : "No recorded routine days yet";
+    $("celebration-message").textContent = celebration.stats.tasks
+      ? `You've made time for ${celebration.stats.tasks} small ${celebration.stats.tasks === 1 ? "action" : "actions"}. Each one is a moment you chose for yourself.`
+      : celebration.actualDay > 0
+        ? "Your saved light is still here, even when earlier details aren't available."
+        : "Your first small action can be the beginning of something wonderful.";
+    renderCelebrationStats(celebration.stats);
+    $("celebration-history-note").textContent = celebration.note;
+    $("celebration-skip").hidden = true;
+    $("celebration-replay").hidden = false;
+    $("celebration-preview").hidden = false;
+    $("celebration-return").hidden = true;
+    $("celebration-status").textContent = "Your progress visualisation is complete.";
+  }
+
+  function celebrationTick(timestamp) {
+    celebrationFrame = null;
+    if (!celebration || document.hidden || celebrationMotion.matches) return;
+    const delta = celebrationLastFrame === null ? 0 : Math.min(timestamp - celebrationLastFrame, 50);
+    celebrationLastFrame = timestamp;
+    celebration.elapsed += delta;
+    if (celebration.mode === "preview") {
+      const progress = Math.min(1, celebration.elapsed / 1800);
+      celebrationCore.setDay(celebration.actualDay + (SuperhumanLivingCore.MAX_DAY - celebration.actualDay) * progress);
+      if (progress === 1) return;
+    } else if (celebration.mode === "playback") {
+      const progress = Math.min(1, celebration.elapsed / celebration.duration);
+      const point = SuperhumanLivingCore.timelineAt(celebration.timeline, progress);
+      if (point) {
+        if (point.date !== celebration.lastDate) {
+          celebration.lastDate = point.date;
+          $("celebration-day").textContent = `Day ${point.number}`;
+          $("celebration-date").textContent = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(`${point.date}T12:00:00`));
+          const snapshot = point.snapshot;
+          const stats = snapshot
+            ? { tasks: snapshot.actions, days: snapshot.fullDays, streak: snapshot.bestStreak }
+            : { tasks: 0, days: 0, streak: 0 };
+          renderCelebrationStats(stats);
+          celebration.targetDay = SuperhumanLivingCore.visualDayForScore(snapshot ? snapshot.score : 0);
+        }
+        celebration.shownDay += (celebration.targetDay - celebration.shownDay) * Math.min(delta / 240, 1);
+        celebrationCore.setDay(celebration.shownDay);
+      }
+      if (progress === 1) {
+        if (celebration.undated) {
+          celebration.mode = "record";
+          celebration.elapsed = 0;
+          celebration.recordStart = celebration.shownDay;
+          $("celebration-day").textContent = "Your saved lifetime record";
+          $("celebration-date").textContent = "Date reached was not recorded";
+          $("celebration-message").textContent = "Your saved record is part of your journey, even when its earlier details are unavailable.";
+        } else {
+          finishCelebration();
+          return;
+        }
+      }
+    } else if (celebration.mode === "record") {
+      const progress = Math.min(1, celebration.elapsed / 1500);
+      celebrationCore.setDay(celebration.recordStart + (celebration.actualDay - celebration.recordStart) * progress);
+      if (progress === 1) {
+        finishCelebration();
+        return;
+      }
+    }
+    celebrationFrame = requestAnimationFrame(celebrationTick);
+  }
+
+  function startCelebrationPlayback() {
+    stopCelebrationPlayback();
+    celebration.mode = "playback";
+    celebration.elapsed = 0;
+    celebration.lastDate = null;
+    celebration.shownDay = 0;
+    celebration.targetDay = 0;
+    $("celebration-skip").hidden = false;
+    $("celebration-replay").hidden = true;
+    $("celebration-preview").hidden = true;
+    $("celebration-return").hidden = true;
+    $("celebration-message").textContent = "Every small action is part of your story.";
+    $("celebration-history-note").textContent = celebration.note;
+    $("celebration-status").textContent = "Playing your recorded progress.";
+    celebrationCore.setDay(0);
+    if (!celebration.timeline.snapshots.length || celebrationMotion.matches
+      || (!celebration.stats.tasks && celebration.actualDay === 0)) {
+      finishCelebration();
+    } else if (!document.hidden) {
+      celebrationFrame = requestAnimationFrame(celebrationTick);
+    }
+  }
+
+  function openCelebration(event) {
+    const timeline = SuperhumanLivingCore.buildTimeline(state, localDateKey());
+    const score = growthScore(state);
+    const last = timeline.snapshots[timeline.snapshots.length - 1];
+    const undated = score > (last ? last.score : 0);
+    celebration = {
+      timeline, actualDay: SuperhumanLivingCore.visualDayForScore(score), undated,
+      duration: Math.max(3000, Math.min(9000, 1000 + (timeline.end - (timeline.start ?? timeline.end) + 1) * 900)),
+      stats: { tasks: totalCompletions(state), days: fullDays(state), streak: bestStreak(state) },
+      note: "Based on saved check-ins and routine snapshots. Earlier or missing days may be unavailable."
+        + (timeline.incomplete ? " Some historical routine details are missing." : "")
+        + (undated ? " Your lifetime record was saved without the date it was reached." : "")
+    };
+    celebrationOpener = event.currentTarget;
+    $("celebration-dialog").showModal();
+    document.body.classList.add("celebration-open");
+    updateCoreVisibility();
+    $("celebration-close").focus();
+    startCelebrationPlayback();
+  }
+
+  document.querySelectorAll("[data-visualise]").forEach(button => button.addEventListener("click", openCelebration));
+  $("celebration-close").addEventListener("click", () => $("celebration-dialog").close());
+  $("celebration-skip").addEventListener("click", finishCelebration);
+  $("celebration-replay").addEventListener("click", startCelebrationPlayback);
+  $("celebration-preview").addEventListener("click", () => {
+    stopCelebrationPlayback();
+    celebration.mode = "preview";
+    celebration.elapsed = 0;
+    $("celebration-day").textContent = "Day 21 · Visual preview";
+    $("celebration-date").textContent = "A possible full-radiance appearance, not your actual progress";
+    $("celebration-message").textContent = "A glimpse of the core in full glory.";
+    $("celebration-preview").hidden = true;
+    $("celebration-return").hidden = false;
+    $("celebration-status").textContent = "Showing the Day 21 visual preview. Your progress has not changed.";
+    if (celebrationMotion.matches) celebrationCore.setDay(SuperhumanLivingCore.MAX_DAY);
+    else if (!document.hidden) celebrationFrame = requestAnimationFrame(celebrationTick);
+  });
+  $("celebration-return").addEventListener("click", finishCelebration);
+  $("celebration-dialog").addEventListener("close", () => {
+    stopCelebrationPlayback();
+    celebration = null;
+    document.body.classList.remove("celebration-open");
+    updateCoreVisibility();
+    if (celebrationOpener) celebrationOpener.focus();
+    celebrationOpener = null;
+  });
+  function updateCelebrationMotion() {
+    stopCelebrationPlayback();
+    if (!celebration || !$("celebration-dialog").open) return;
+    if (celebrationMotion.matches) {
+      if (celebration.mode === "preview") celebrationCore.setDay(SuperhumanLivingCore.MAX_DAY);
+      else if (celebration.mode !== "finished") finishCelebration();
+    } else if (!document.hidden && celebration.mode !== "finished") {
+      celebrationFrame = requestAnimationFrame(celebrationTick);
+    }
+  }
+  document.addEventListener("visibilitychange", updateCelebrationMotion);
+  celebrationMotion.addEventListener("change", updateCelebrationMotion);
 
   function toLocalDateTimeValue(isoDate = new Date().toISOString()) {
     const date = new Date(isoDate);
@@ -1494,6 +1686,7 @@
   }
   initializeAutoSync();
   render();
+  updateCoreVisibility();
   appInitialized = true;
   scheduleAutoSync(0);
   })();
