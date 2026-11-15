@@ -85,6 +85,15 @@ test("records reconstruct state and retain distinct completions and journal entr
   assert.deepEqual(restored.smoking, original.smoking);
 });
 
+test("routines larger than 25 tasks reconstruct without dropping tasks", () => {
+  const original = state();
+  original.tasks = Array.from({ length: 100 }, (_, i) => ({ id: `task-${i}`, name: `Task ${i}` }));
+  const records = Object.fromEntries(Object.entries(recordsFromState(original)).map(([record_key, value]) =>
+    [record_key, { record_key, value, deleted: false }]));
+  const restored = stateFromRecords(records);
+  assert.deepEqual(restored.tasks, original.tasks);
+});
+
 test("newer deletion wins and equal-version inconsistent records fail explicitly", () => {
   const saved = { client_time: 1, writer: "device", deleted: false, value: true };
   const deletion = { client_time: 2, writer: "device", deleted: true, value: null };

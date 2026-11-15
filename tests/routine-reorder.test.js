@@ -254,12 +254,39 @@ function formHarness(tasks) {
     return elements[id];
   }
   const context = {
-    state: { tasks }, $: element, MAX_TASKS: 25, ICONS: ["*"], selectedIcon: "*", editingId: null,
+    state: { tasks }, $: element, ICONS: ["*"], selectedIcon: "*", editingId: null,
     escapeHtml: value => value, save() {}, render() {}, Date, Math
   };
   vm.runInNewContext(helpers + formHandlers, context);
   return { context, elements, element };
 }
+
+test("the task form accepts new tasks beyond the former 25-task limit", () => {
+  const tasks = Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, name: `Task ${i}`, group: "Morning" }));
+  const h = formHarness(tasks);
+  h.context.openTaskDialog();
+  h.element("task-name").value = "Another task";
+  h.element("task-group").value = "Morning";
+  h.element("task-form").listeners.submit({ preventDefault() {} });
+  assert.equal(h.context.state.tasks.length, 31);
+  assert.equal(h.context.state.tasks[30].name, "Another task");
+});
+
+test("large routines survive both local and synced state validation", () => {
+  const saved = {
+    tasks: Array.from({ length: 100 }, (_, i) => ({ id: `t${i}`, name: `Task ${i}` })),
+    completions: {}, routines: {}, journal: [], oaths: []
+  };
+  const local = source.slice(source.indexOf("  function validOaths("), source.indexOf("  function normalizeSmoking("));
+  const synced = source.slice(source.indexOf("  function isRecord("), source.indexOf("  function completionFor("));
+  const context = { SuperhumanSyncCore: core, normalizeSmoking: () => ({}), Date };
+  vm.runInNewContext(local + synced, context);
+  const normalized = context.normalizeStoredState(saved);
+  assert.equal(normalized.tasks.length, 100);
+  const restored = context.validateSyncedState(normalized);
+  assert.equal(restored.tasks.length, 100);
+  assert.equal(restored.tasks[99].id, "t99");
+});
 
 test("group dropdown lists existing groups once and opens with the task's matching group", () => {
   const h = formHarness([

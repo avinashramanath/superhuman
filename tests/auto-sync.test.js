@@ -91,6 +91,22 @@ test("fresh devices merge independent offline edits without overwriting establis
   assert.deepEqual(second.state.completions["2026-11-15"], []);
 });
 
+test("a larger routine syncs between devices without losing tasks", async () => {
+  const server = cloud();
+  const first = device(server, "a", initialState());
+  const second = device(server, "b", initialState());
+  await first.engine.run();
+  await second.engine.run();
+  first.edit(state => {
+    state.tasks = Array.from({ length: 100 }, (_, i) => ({ id: `t${i}`, name: `Task ${i}` }));
+  });
+  await first.engine.run();
+  await second.engine.run();
+  assert.equal(second.state.tasks.length, 100);
+  assert.equal(second.state.tasks[99].id, "t99");
+  assert.match(second.status, /All changes synced/);
+});
+
 test("daily oaths sync across devices and merge independent offline days", async () => {
   const server = cloud();
   const first = device(server, "a", initialState());

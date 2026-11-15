@@ -5,7 +5,6 @@
   const SUPABASE_URL = "https://txvlnkclbbyhsymarzqn.supabase.co";
   const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uVxOvQrzACpa8Ug9Sm4n3w_K5llUi7Y";
   const RECOVERY_KEY = "superhuman-pre-sync-recovery-v1";
-  const MAX_TASKS = 25;
   const ICONS = [
     "💧", "🫧", "🌊", "🧘", "🪷", "🧠", "📖", "✍️", "🎧", "🎨",
     "🏃", "🚴", "🏋️", "🧗", "🕺", "🥗", "🍎", "🍵", "🌿", "🌱",
@@ -209,8 +208,7 @@
 
   function normalizeStoredState(saved) {
     if (!isRecord(saved) || !Array.isArray(saved.tasks) || !isRecord(saved.completions)) return null;
-    if (saved.tasks.length > MAX_TASKS
-      || saved.tasks.some(task => !isRecord(task) || typeof task.id !== "string" || typeof task.name !== "string")
+    if (saved.tasks.some(task => !isRecord(task) || typeof task.id !== "string" || typeof task.name !== "string")
       || (saved.routines !== undefined && !isRecord(saved.routines))
       || (saved.journal !== undefined && (!Array.isArray(saved.journal) || saved.journal.some(entry =>
         !isRecord(entry) || typeof entry.id !== "string" || typeof entry.createdAt !== "string"
@@ -333,7 +331,7 @@
   }
 
   function validateSyncedState(value) {
-    if (!isRecord(value) || !Array.isArray(value.tasks) || value.tasks.length > MAX_TASKS
+    if (!isRecord(value) || !Array.isArray(value.tasks)
       || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal) || !validOaths(value.oaths)
 ) {
       throw new Error("Synced data is incomplete or invalid; local data was not changed.");
@@ -359,7 +357,7 @@
       throw new Error("Synced data contains an invalid journal entry; local data was not changed.");
     }
     return {
-      tasks: value.tasks.map(task => ({ ...task })).slice(0, MAX_TASKS),
+      tasks: value.tasks.map(task => ({ ...task })),
       completions: value.completions,
       routines: value.routines,
       smoking: normalizeSmoking(value.smoking),
@@ -478,9 +476,7 @@
     $("progress-percent").textContent = `${percent}%`;
     $("progress-ring").setAttribute("aria-label", `${percent}% complete`);
     $("progress-fill").style.width = `${percent}%`;
-    $("routine-caption").textContent = `${state.tasks.length} of ${MAX_TASKS} daily tasks`;
-    $("add-task-button").disabled = state.tasks.length >= MAX_TASKS;
-    $("add-task-button").setAttribute("aria-label", state.tasks.length >= MAX_TASKS ? "Routine is full" : "Add a routine task");
+    $("routine-caption").textContent = `${state.tasks.length} daily ${state.tasks.length === 1 ? "task" : "tasks"}`;
 
     if (!state.tasks.length) {
       list.innerHTML = '<div class="empty-state">Your routine is a blank page. Add one small thing you would like to do today.</div>';
@@ -710,9 +706,6 @@
     $("new-task-group").hidden = true;
     $("new-task-group").required = false;
     $("delete-task-button").hidden = !task;
-    $("task-name").disabled = !task && state.tasks.length >= MAX_TASKS;
-    $("task-group").disabled = !task && state.tasks.length >= MAX_TASKS;
-    $("task-form").querySelector('[type="submit"]').disabled = !task && state.tasks.length >= MAX_TASKS;
     $("emoji-options").innerHTML = ICONS.map(icon => `<button class="emoji-option${icon === selectedIcon ? " is-selected" : ""}" type="button" data-icon="${icon}" aria-label="${icon}" aria-pressed="${icon === selectedIcon}">${icon}</button>`).join("");
     $("task-dialog").showModal();
     if (!task) $("task-name").focus();
@@ -1203,7 +1196,6 @@
         if (moved) state.tasks = insertTaskInGroup(state.tasks.filter(item => item.id !== task.id), task);
       }
     } else {
-      if (state.tasks.length >= MAX_TASKS) return;
       state.tasks = insertTaskInGroup(state.tasks, { id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, group, icon: selectedIcon });
     }
     save();

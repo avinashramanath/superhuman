@@ -225,7 +225,7 @@
         throw new Error("A sync record has invalid or unsupported data.");
       }
     }
-    if (singletons.size !== 3 || state.tasks.length > 25) throw new Error("The sync data is incomplete or invalid.");
+    if (singletons.size !== 3) throw new Error("The sync data is incomplete or invalid.");
     state.tasks.sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
     state.tasks = state.tasks.map(({ position, ...task }) => task);
     for (const ids of Object.values(state.completions)) ids.sort();

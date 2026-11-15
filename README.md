@@ -18,6 +18,8 @@ Use only one open Superhuman tab or window per browser at a time. Simultaneous t
 
 Different records merge independently. Conflicting edits to the same record use the latest device timestamp, with a deterministic device-ID tie-breaker; incorrect device clocks can therefore choose the wrong version. Lifetime growth uses the highest value. During first-time migration, older local values without timestamps are merged automatically: distinct local records are uploaded, existing cloud values and deletions win conflicts, and the higher growth value is retained. Edits queued on the device during migration take precedence over the cloud version observed at that time. A local recovery copy is created before migration. Existing account-only cloud data is not automatically imported: recover it to a device using the older account-enabled app before migrating.
 
+There is no fixed 25-task limit. Update the app on all devices before exceeding 25 tasks: older versions reject larger routines and cannot sync them.
+
 The app no longer stores or syncs journal photos. Previously saved photo files, if any, are not automatically deleted from browser storage or any existing cloud bucket. The public records do not use or modify Project Zero's existing `public.project_zero_state` table.
 
 ## Run locally
