@@ -19,10 +19,10 @@ test("upgrading the shell preserves unrelated caches and installs the complete n
   };
   const caches = {
     async open(name) {
-      assert.equal(name, "superhuman-shell-v24");
+      assert.equal(name, "superhuman-shell-v25");
       return { async addAll(files) { shell = files; } };
     },
-    async keys() { return ["superhuman-shell-v23", "superhuman-shell-v24", "another-app"]; },
+    async keys() { return ["superhuman-shell-v24", "superhuman-shell-v25", "another-app"]; },
     async delete(name) { deleted.push(name); }
   };
   const source = fs.readFileSync(path.join(__dirname, "..", "service-worker.js"), "utf8");
@@ -35,6 +35,6 @@ test("upgrading the shell preserves unrelated caches and installs the complete n
   assert.ok(shell.includes("./sync-transport.js"));
   handlers.activate({ waitUntil(promise) { pending = promise; } });
   await pending;
-  assert.deepEqual(deleted, ["superhuman-shell-v23"]);
+  assert.deepEqual(deleted, ["superhuman-shell-v24"]);
   assert.equal(claimed, true);
 });

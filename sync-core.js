@@ -10,6 +10,9 @@
     return Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]]));
   });
   const sameValue = (left, right) => canonicalJson(left) === canonicalJson(right);
+  const validDateKey = date => /^\d{4}-\d{2}-\d{2}$/.test(date)
+    && Number.isFinite(Date.parse(`${date}T00:00:00Z`))
+    && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
 
   function recordsFromState(state) {
     const records = {};
@@ -24,6 +27,7 @@
       records[key("routine", date)] = ids;
     }
     for (const entry of state.journal) records[key("journal", entry.id)] = entry;
+    for (const oath of state.oaths || []) records[key("oath", oath.date)] = oath;
     records[key("smoking")] = state.smoking;
     records[key("growth")] = state.growthPoints;
     records[key("name")] = state.name;
@@ -168,7 +172,7 @@
   }
 
   function stateFromRecords(records) {
-    const state = { tasks: [], completions: {}, routines: {}, journal: [] };
+    const state = { tasks: [], completions: {}, routines: {}, journal: [], oaths: [] };
     const singletons = new Set();
     for (const record of Object.values(records)) {
       let parts;
@@ -203,6 +207,11 @@
       } else if (type === "journal" && parts.length === 2 && value && typeof value === "object"
         && !Array.isArray(value) && value.id === id) {
         state.journal.push(value);
+      } else if (type === "oath" && parts.length === 2 && validDateKey(id)
+        && value && typeof value === "object" && !Array.isArray(value) && value.date === id
+        && typeof value.text === "string" && value.text.trim().length > 0 && value.text.length <= 3000
+        && typeof value.updatedAt === "string" && Number.isFinite(Date.parse(value.updatedAt))) {
+        state.oaths.push(value);
       } else if (parts.length === 1 && type === "smoking" && value && typeof value === "object" && !Array.isArray(value)) {
         state.smoking = value;
         singletons.add(type);
@@ -225,6 +234,6 @@
 
   return {
     recordsFromState, changesBetween, createMetadata, captureChanges, mergePending, validateRemoteRecords,
-    compareVersions, resolveRecord, pushRecord, planLegacyImport, stateFromRecords
+    compareVersions, resolveRecord, pushRecord, planLegacyImport, stateFromRecords, validDateKey
   };
 });

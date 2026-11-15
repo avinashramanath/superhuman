@@ -37,6 +37,32 @@ test("independent journal additions and edits become separate records", () => {
   assert.equal(changes['["journal","entry-2"]'].deleted, false);
 });
 
+test("daily oaths sync independently and round-trip alongside existing data", () => {
+  const before = state();
+  const after = structuredClone(before);
+  after.oaths = [
+    { date: "2026-11-15", text: "One day at a time", updatedAt: "2026-11-15T08:00:00Z" },
+    { date: "2026-11-16", text: "Keep going", updatedAt: "2026-11-16T08:00:00Z" }
+  ];
+  const values = recordsFromState(after);
+  const changes = changesBetween(recordsFromState(before), values, 101, "device-a");
+  assert.deepEqual(Object.keys(changes), ['["oath","2026-11-15"]', '["oath","2026-11-16"]']);
+  const records = Object.fromEntries(Object.entries(values).map(([record_key, value]) => [record_key, { record_key, value, deleted: false }]));
+  assert.deepEqual(stateFromRecords(records).oaths, after.oaths);
+  assert.deepEqual(stateFromRecords(records).journal, before.journal);
+  const edited = structuredClone(after);
+  edited.oaths[0].text = "A revised promise";
+  assert.deepEqual(Object.keys(changesBetween(values, recordsFromState(edited), 102, "device-a")), ['["oath","2026-11-15"]']);
+});
+
+test("malformed oath records are rejected instead of replacing local data", () => {
+  const values = recordsFromState(state());
+  const records = Object.fromEntries(Object.entries(values).map(([record_key, value]) => [record_key, { record_key, value, deleted: false }]));
+  const record_key = '["oath","2026-02-30"]';
+  records[record_key] = { record_key, deleted: false, value: { date: "2026-02-30", text: "Promise", updatedAt: "2026-02-01T08:00:00Z" } };
+  assert.throws(() => stateFromRecords(records), /invalid or unsupported/);
+});
+
 test("versions compare by edit time, then deterministically by device", () => {
   const earlier = { client_time: 10, writer: "b" };
   const later = { client_time: 11, writer: "a" };

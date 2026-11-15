@@ -23,20 +23,48 @@ function harness(tasks = [
   let saved = 0;
   let toggled = null;
   let removed = 0;
-  const cards = tasks.map((task, i) => {
+  let animations = 0;
+  const groups = new Map();
+  for (const task of tasks) {
+    if (!groups.has(task.group)) {
+      const top = 100 + groups.size * 200;
+      groups.set(task.group, { cards: [], top, get children() { return this.cards; },
+        parentElement: { getBoundingClientRect: () => ({ top: top - 40, bottom: top + 90 }) } });
+    }
+  }
+  const cards = tasks.map(task => {
     const surface = { classList: { add() {}, remove() {} }, style: {} };
-    return {
+    const card = {
       dataset: { id: task.id },
       classList: { add() {}, remove() {} },
-      getBoundingClientRect: () => ({ top: 100 + i * 100, bottom: 180 + i * 100, left: 0, width: 300 }),
+      getBoundingClientRect() {
+        const top = this.parentNode.top + this.parentNode.cards.indexOf(this) * 100;
+        return { top, bottom: top + 80, left: 0, width: 300 };
+      },
+      get nextSibling() { return this.parentNode.cards[this.parentNode.cards.indexOf(this) + 1] || null; },
       querySelector: () => surface,
       cloneNode: () => ({ classList: { add() {}, remove() {} }, setAttribute() {}, style: {}, remove() { removed++; } }),
+      animate() { animations++; },
       setPointerCapture() {}
     };
+    const group = groups.get(task.group);
+    card.parentNode = group;
+    group.cards.push(card);
+    return card;
   });
+  for (const group of groups.values()) {
+    group.insertBefore = (card, before) => {
+      card.parentNode.cards.splice(card.parentNode.cards.indexOf(card), 1);
+      const index = before ? group.cards.indexOf(before) : group.cards.length;
+      group.cards.splice(index, 0, card);
+      card.parentNode = group;
+    };
+    group.appendChild = card => group.insertBefore(card, null);
+  }
   const list = {
+    classList: { add() {}, remove() {} },
     addEventListener(type, handler) { listeners[type] = handler; },
-    querySelectorAll() { return cards; }
+    querySelectorAll() { return [...groups.values()].flatMap(group => group.cards); }
   };
   const context = {
     state: { tasks }, taskDrag: null, suppressTaskClickUntil: 0,
@@ -44,7 +72,7 @@ function harness(tasks = [
     setTimeout(fn) { timer = fn; return 1; }, clearTimeout() { timer = null; },
     setInterval() { return 2; }, clearInterval() {},
     document: { body: { appendChild() {} } },
-    window: { innerHeight: 800, scrollBy() {}, addEventListener(type, handler) { windowListeners[type] = handler; } },
+    window: { innerHeight: 800, scrollBy() {}, matchMedia() { return { matches: false }; }, addEventListener(type, handler) { windowListeners[type] = handler; } },
     Math, Date
   };
   vm.runInNewContext(helpers + gestures, context);
@@ -62,7 +90,9 @@ function harness(tasks = [
   return {
     context, cards, listeners, windowListeners, start, move, end,
     hold() { if (timer) { const fn = timer; timer = null; fn(); } },
-    get saved() { return saved; }, get toggled() { return toggled; }, get removed() { return removed; }
+    get saved() { return saved; }, get toggled() { return toggled; }, get removed() { return removed; },
+    get visualIds() { return list.querySelectorAll().map(card => card.dataset.id); },
+    get animations() { return animations; }
   };
 }
 
@@ -72,6 +102,8 @@ test("long press on a task moves it down into the target group", () => {
   const h = harness();
   h.start(); h.hold();
   assert.equal(h.move(50, 370), true);
+  assert.deepEqual(h.visualIds, ["b", "c", "a"]);
+  assert.ok(h.animations > 0);
   h.end(50, 370);
   assert.deepEqual(ids(h), ["b", "c", "a"]);
   assert.equal(h.context.state.tasks[2].group, "Evening");
@@ -107,7 +139,22 @@ test("cancelling an active touch removes the ghost without saving", () => {
   h.start(); h.hold(); h.move(50, 370);
   h.listeners.touchcancel();
   assert.deepEqual(ids(h), ["a", "b", "c"]);
+  assert.deepEqual(h.visualIds, ["a", "b", "c"]);
   assert.equal(h.removed, 1);
+  assert.equal(h.saved, 0);
+});
+
+test("a lone task can be dragged back into its original empty group", () => {
+  const h = harness([
+    { id: "a", name: "A", group: "Morning" },
+    { id: "b", name: "B", group: "Evening" }
+  ]);
+  h.start(); h.hold(); h.move(50, 370);
+  assert.deepEqual(h.visualIds, ["b", "a"]);
+  h.move(50, 140);
+  assert.deepEqual(h.visualIds, ["a", "b"]);
+  h.end(50, 140);
+  assert.deepEqual(ids(h), ["a", "b"]);
   assert.equal(h.saved, 0);
 });
 

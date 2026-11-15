@@ -152,6 +152,27 @@
         <p class="journal-privacy-note"><span aria-hidden="true">⌑</span> Automatic sync is public: anyone can read, change, or delete synced entries.</p>
       </section>
 
+      <section class="view oath-view" id="oath-view" aria-labelledby="oath-title" hidden>
+        <header class="page-intro">
+          <p class="eyebrow">A PROMISE TO YOURSELF</p>
+          <h1 id="oath-title">Today's oath.</h1>
+        </header>
+        <section class="oath-hero" aria-labelledby="oath-today-title">
+          <div class="oath-hero-top"><span id="oath-today-title">TODAY'S OATH</span><span id="oath-time-left"></span></div>
+          <p class="oath-words" id="oath-words">A new day, a promise of your own.</p>
+          <button type="button" class="oath-edit-button" id="oath-edit-button" hidden>Edit today's oath</button>
+        </section>
+        <form class="oath-compose content-card" id="oath-form">
+          <label class="field-label" for="oath-text">Your words for today</label>
+          <textarea id="oath-text" maxlength="3000" rows="4" placeholder="Today, I promise myself…"></textarea>
+          <p class="journal-error" id="oath-error" role="status" hidden></p>
+          <div class="oath-form-actions"><span id="oath-char-count">0 / 3000</span><button class="journal-save-button" type="submit">Save today's oath</button></div>
+        </form>
+        <div class="journal-list-heading"><div><p class="eyebrow">YOUR PROMISES</p><h2>Oaths, kept.</h2></div><span id="oath-count"></span></div>
+        <div class="journal-entries" id="oath-entries"></div>
+        <p class="journal-privacy-note">Automatic sync is public: anyone can read, change, or delete synced oaths.</p>
+      </section>
+
       <section class="view" id="badges-view" aria-labelledby="badges-title" hidden>
         <div class="page-intro">
           <p class="eyebrow">PROOF OF YOUR PROGRESS</p>
@@ -298,6 +319,9 @@
         </button>
         <button class="nav-item" type="button" data-view="journal">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm0 0a3 3 0 0 0-3 3v12a3 3 0 0 1 3-3h10M9 8h5m-5 4h5"/></svg><span>Journal</span>
+        </button>
+        <button class="nav-item" type="button" data-view="oath">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.4-7-10a7 7 0 0 1 14 0c0 5.6-7 10-7 10Z"/><path d="m9 11 2 2 4-4"/></svg><span>Oath</span>
         </button>
       </nav>
     </main>

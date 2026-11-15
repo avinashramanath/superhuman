@@ -34,7 +34,7 @@
       [1000, "A thousand moments", "Complete 1,000 routine tasks", "🏆"],
       [2500, "Lightkeeper", "Complete 2,500 routine tasks", "🕯️"]
     ].map(([count, title, copy, icon]) => ({
-      id: `tasks-${count}`, title, copy, icon, test: s => totalCompletions(s) >= count
+      id: `tasks-${count}`, title, copy, icon, test: (s, stats) => (stats ? stats.tasks : totalCompletions(s)) >= count
     })),
     ...[
       [1, "First full orbit", "Complete every task in one day", "☀️"],
@@ -45,7 +45,7 @@
       [250, "A season of showing up", "Complete 250 full routine days", "🍂"],
       [365, "A year of your own", "Complete 365 full routine days", "☀️"]
     ].map(([count, title, copy, icon]) => ({
-      id: `days-${count}`, title, copy, icon, test: s => fullDays(s) >= count
+      id: `days-${count}`, title, copy, icon, test: (s, stats) => (stats ? stats.days : fullDays(s)) >= count
     })),
     ...[
       [2, "Two-day spark", "Build a 2-day full-routine streak", "✨"],
@@ -65,9 +65,29 @@
       [200, "Two hundred strong", "Build a 200-day full-routine streak", "🦋"],
       [365, "Year of momentum", "Build a 365-day full-routine streak", "👑"]
     ].map(([count, title, copy, icon]) => ({
-      id: `streak-${count}`, title, copy, icon, test: s => bestStreak(s) >= count
+      id: `streak-${count}`, title, copy, icon, test: (s, stats) => (stats ? stats.streak : bestStreak(s)) >= count
     }))
   ];
+  const extraBadgeThemes = ["A Little Brighter", "Steady Steps", "Growing Stronger", "Your Own Pace", "Keep Shining"];
+  const extraBadgeIcons = ["🌱", "✨", "🌿", "🌟", "💫"];
+  const extraTaskCounts = [2, 3, 15, 20, ...Array.from({ length: 42 }, (_, i) => (i + 1) * 25)
+    .filter(count => ![25, 50, 100, 250, 500, 1000].includes(count))];
+  const extraDayCounts = Array.from({ length: 37 }, (_, i) => i + 2).filter(count => ![7, 21].includes(count));
+  const extraStreakCounts = [...Array.from({ length: 29 }, (_, i) => i + 4)
+    .filter(count => ![5, 7, 10, 14, 21, 30].includes(count)), 45, 120];
+  for (const [kind, counts, metric, label] of [
+    ["tasks", extraTaskCounts, totalCompletions, "routine tasks"],
+    ["days", extraDayCounts, fullDays, "full routine days"],
+    ["streak", extraStreakCounts, bestStreak, "days in a full-routine streak"]
+  ]) {
+    BADGES.push(...counts.map((count, index) => ({
+      id: `${kind}-${count}`,
+      title: `${count} ${kind === "tasks" ? "Actions" : kind === "days" ? "Full Days" : "Day Streak"} · ${extraBadgeThemes[index % extraBadgeThemes.length]}`,
+      copy: `${kind === "streak" ? "Build" : "Complete"} ${count} ${label}`,
+      icon: extraBadgeIcons[index % extraBadgeIcons.length],
+      test: (s, stats) => (stats ? stats[kind] : metric(s)) >= count
+    })));
+  }
   const QUIT_MILESTONES = [
     { afterMs: 20 * 60000, title: "A gentler heartbeat", label: "20 minutes", copy: "Your pulse and blood pressure begin returning toward normal.", icon: "💓" },
     { afterMs: 8 * 3600000, title: "More oxygen", label: "8 hours", copy: "Oxygen levels can return toward normal as carbon monoxide falls.", icon: "🌬️" },
@@ -177,7 +197,14 @@
     } catch (error) {
       console.error("Could not read the saved routine.", error);
     }
-    return { tasks: SEED_TASKS.map(task => ({ ...task })), completions: {}, routines: {}, smoking: normalizeSmoking(), growthPoints: 0, journal: [], name: "Alex" };
+    return { tasks: SEED_TASKS.map(task => ({ ...task })), completions: {}, routines: {}, smoking: normalizeSmoking(), growthPoints: 0, journal: [], oaths: [], name: "Alex" };
+  }
+
+  function validOaths(oaths) {
+    return Array.isArray(oaths) && new Set(oaths.map(oath => oath?.date)).size === oaths.length
+      && oaths.every(oath => isRecord(oath) && SuperhumanSyncCore.validDateKey(oath.date)
+        && typeof oath.text === "string" && oath.text.trim().length > 0 && oath.text.length <= 3000
+        && typeof oath.updatedAt === "string" && Number.isFinite(Date.parse(oath.updatedAt)));
   }
 
   function normalizeStoredState(saved) {
@@ -188,6 +215,7 @@
       || (saved.journal !== undefined && (!Array.isArray(saved.journal) || saved.journal.some(entry =>
         !isRecord(entry) || typeof entry.id !== "string" || typeof entry.createdAt !== "string"
         || typeof entry.text !== "string")))
+      || (saved.oaths !== undefined && !validOaths(saved.oaths))
       || (saved.growthPoints !== undefined && (!Number.isFinite(saved.growthPoints) || saved.growthPoints < 0))
       || (saved.name !== undefined && typeof saved.name !== "string")) return null;
     return {
@@ -197,6 +225,7 @@
       smoking: normalizeSmoking(saved.smoking),
       growthPoints: Number.isFinite(saved.growthPoints) && saved.growthPoints >= 0 ? saved.growthPoints : 0,
       journal: (saved.journal || []).map(({ photoKey, ...entry }) => entry),
+      oaths: saved.oaths || [],
       name: typeof saved.name === "string" ? saved.name : "Alex"
     };
   }
@@ -305,7 +334,7 @@
 
   function validateSyncedState(value) {
     if (!isRecord(value) || !Array.isArray(value.tasks) || value.tasks.length > MAX_TASKS
-      || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal)
+      || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal) || !validOaths(value.oaths)
 ) {
       throw new Error("Synced data is incomplete or invalid; local data was not changed.");
     }
@@ -336,6 +365,7 @@
       smoking: normalizeSmoking(value.smoking),
       growthPoints: Number.isFinite(value.growthPoints) && value.growthPoints >= 0 ? value.growthPoints : 0,
       journal: value.journal.map(({ photoKey, ...entry }) => entry),
+      oaths: value.oaths,
       name: typeof value.name === "string" ? value.name : "Alex"
     };
   }
@@ -423,6 +453,7 @@
     renderBadges();
     renderSmoking();
     renderJournal();
+    renderOaths();
   }
 
   function renderDate() {
@@ -550,6 +581,23 @@
     $("journal-entries").innerHTML = cards.join("");
   }
 
+  function renderOaths(now = new Date()) {
+    const today = localDateKey(now);
+    const oath = state.oaths.find(entry => entry.date === today);
+    $("oath-words").textContent = oath ? oath.text : "A new day, a promise of your own.";
+    $("oath-edit-button").hidden = !oath;
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    const minutes = Math.ceil((midnight - now) / 60000);
+    $("oath-time-left").textContent = `${Math.floor(minutes / 60)}h ${minutes % 60}m left today`;
+    const entries = [...state.oaths].sort((a, b) => b.date.localeCompare(a.date));
+    $("oath-count").textContent = `${entries.length} ${entries.length === 1 ? "oath" : "oaths"}`;
+    $("oath-entries").innerHTML = entries.length ? entries.map(entry => {
+      const date = new Date(`${entry.date}T12:00:00`);
+      return `<article class="journal-entry-card"><p class="journal-entry-date">${escapeHtml(new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(date))}</p><p class="journal-entry-text">${escapeHtml(entry.text)}</p></article>`;
+    }).join("") : '<div class="journal-empty"><span aria-hidden="true">✧</span><h3>No oaths yet.</h3></div>';
+  }
+
   function renderHistory() {
     const dates = Object.keys(state.completions).sort().reverse();
     const todayKey = localDateKey();
@@ -580,10 +628,11 @@
   }
 
   function renderBadges() {
-    const unlocked = BADGES.filter(badge => badge.test(state));
+    const stats = { tasks: totalCompletions(state), days: fullDays(state), streak: bestStreak(state) };
+    const unlocked = BADGES.filter(badge => badge.test(state, stats));
     $("badge-summary").innerHTML = `<strong>${unlocked.length} <span> / ${BADGES.length}</span></strong><span>badges earned</span>`;
     $("badge-grid").innerHTML = BADGES.map(badge => {
-      const earned = badge.test(state);
+      const earned = badge.test(state, stats);
       return `<article class="badge-card${earned ? "" : " is-locked"}"><span class="badge-symbol" aria-hidden="true">${badge.icon}</span><h2>${badge.title}</h2><p>${badge.copy}</p></article>`;
     }).join("");
   }
@@ -692,6 +741,7 @@
   }
 
   function switchView(name) {
+    if (name === "oath") renderOaths();
     for (const button of document.querySelectorAll(".nav-item")) {
       const current = button.dataset.view === name;
       button.classList.toggle("is-current", current);
@@ -940,7 +990,10 @@
     if (!task) return;
     switch (button.dataset.action) {
       case "toggle": toggleTask(task.id, !completionFor(localDateKey()).includes(task.id)); break;
-      case "edit": openTaskDialog(task); break;
+      case "edit":
+        if (event.detail > 0 && document.activeElement === button) button.blur();
+        openTaskDialog(task);
+        break;
       case "up": moveTask(task.id, -1); break;
       case "down": moveTask(task.id, 1); break;
     }
@@ -964,13 +1017,15 @@
 
   function startTaskDrag(card, x, y, kind, id) {
     if (taskDrag || (kind === "mouse" && state.tasks.length < 2)) return;
-    const drag = { card, kind, id, x, y, currentX: x, currentY: y, active: false, target: null, after: false };
+    const drag = { card, kind, id, x, y, currentX: x, currentY: y, active: false, target: null, after: false,
+      originalParent: card.parentNode, originalNext: card.nextSibling };
     taskDrag = drag;
     if (state.tasks.length < 2) return;
     drag.timer = setTimeout(() => {
       if (taskDrag !== drag) return;
       drag.active = true;
       card.classList.add("is-reordering");
+      $("routine-list").classList.add("is-reordering");
       const rect = card.getBoundingClientRect();
       drag.offsetX = x - rect.left;
       drag.offsetY = y - rect.top;
@@ -1004,9 +1059,20 @@
     drag.ghost.style.left = `${x - drag.offsetX}px`;
     drag.ghost.style.top = `${y - drag.offsetY}px`;
     const cards = [...$("routine-list").querySelectorAll(".task-wrap")];
+    if (drag.originalParent !== drag.card.parentNode && !drag.originalParent.children.length) {
+      const originalRect = drag.originalParent.parentElement.getBoundingClientRect();
+      if (y >= originalRect.top && y <= originalRect.bottom) {
+        drag.originalParent.appendChild(drag.card);
+        drag.target = null;
+        return;
+      }
+    }
+    const placeholderRect = drag.card.getBoundingClientRect();
+    if (y >= placeholderRect.top && y <= placeholderRect.bottom) return;
     let target = null;
     let distance = Infinity;
     for (const card of cards) {
+      if (card === drag.card) continue;
       const rect = card.getBoundingClientRect();
       const gap = Math.max(rect.top - y, 0, y - rect.bottom);
       if (gap < distance) {
@@ -1014,12 +1080,21 @@
         distance = gap;
       }
     }
-    drag.target?.classList.remove("drop-before", "drop-after");
-    drag.target = target && target !== drag.card ? target : null;
-    if (drag.target) {
-      const rect = drag.target.getBoundingClientRect();
-      drag.after = y >= (rect.top + rect.bottom) / 2;
-      drag.target.classList.add(drag.after ? "drop-after" : "drop-before");
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const after = y >= (rect.top + rect.bottom) / 2;
+    if (target === drag.target && after === drag.after) return;
+    const positions = cards.map(card => [card, card.getBoundingClientRect()]);
+    drag.target = target;
+    drag.after = after;
+    target.parentNode.insertBefore(drag.card, after ? target.nextSibling : target);
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      for (const [card, before] of positions) {
+        if (card === drag.card) continue;
+        const change = before.top - card.getBoundingClientRect().top;
+        if (change) card.animate([{ transform: `translateY(${change}px)` }, { transform: "translateY(0)" }],
+          { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" });
+      }
     }
   }
 
@@ -1029,10 +1104,11 @@
     clearTimeout(drag.timer);
     clearInterval(drag.scrollTimer);
     drag.card.classList.remove("is-reordering");
+    $("routine-list").classList.remove("is-reordering");
     const surface = drag.card.querySelector(".task-card");
     surface.classList.remove("is-dragging");
     surface.style.transform = "";
-    drag.target?.classList.remove("drop-before", "drop-after");
+    if (cancelled && drag.active) drag.originalParent.insertBefore(drag.card, drag.originalNext);
     drag.ghost?.remove();
     taskDrag = null;
     if (drag.active) suppressTaskClickUntil = Date.now() + 600;
@@ -1156,6 +1232,38 @@
   document.querySelector(".bottom-nav").addEventListener("click", event => {
     const button = event.target.closest("[data-view]");
     if (button) switchView(button.dataset.view);
+  });
+  $("oath-text").addEventListener("input", () => {
+    $("oath-char-count").textContent = `${$("oath-text").value.length} / 3000`;
+  });
+  $("oath-edit-button").addEventListener("click", () => {
+    const oath = state.oaths.find(entry => entry.date === localDateKey());
+    if (!oath) { renderOaths(); return; }
+    $("oath-text").value = oath.text;
+    $("oath-char-count").textContent = `${oath.text.length} / 3000`;
+    $("oath-text").focus();
+  });
+  $("oath-form").addEventListener("submit", event => {
+    event.preventDefault();
+    const text = $("oath-text").value.trim();
+    if (!text) {
+      $("oath-error").textContent = "Write your oath before saving.";
+      $("oath-error").hidden = false;
+      return;
+    }
+    const previousOaths = state.oaths;
+    const date = localDateKey();
+    state.oaths = [...state.oaths.filter(entry => entry.date !== date), { date, text, updatedAt: new Date().toISOString() }];
+    if (!save()) {
+      state.oaths = previousOaths;
+      $("oath-error").textContent = "Your oath could not be saved on this device. Check your storage and try again.";
+      $("oath-error").hidden = false;
+      return;
+    }
+    $("oath-text").value = "";
+    $("oath-char-count").textContent = "0 / 3000";
+    $("oath-error").hidden = true;
+    renderOaths();
   });
   $("journal-text").addEventListener("input", () => {
     $("journal-char-count").textContent = `${$("journal-text").value.length} / 3000`;
@@ -1381,6 +1489,9 @@
   setInterval(() => {
     if (!document.hidden) scheduleAutoSync(0);
   }, 30000);
+  setInterval(() => {
+    if (!document.hidden) renderOaths();
+  }, 60000);
   setInterval(() => {
     if (state.smoking.startedAt) {
       updateSmokeClock(Math.floor(currentSmokeRunMs(state) / 60000) !== lastSmokeMinute);

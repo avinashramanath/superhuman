@@ -91,6 +91,26 @@ test("fresh devices merge independent offline edits without overwriting establis
   assert.deepEqual(second.state.completions["2026-11-15"], []);
 });
 
+test("daily oaths sync across devices and merge independent offline days", async () => {
+  const server = cloud();
+  const first = device(server, "a", initialState());
+  const second = device(server, "b", initialState());
+  await first.engine.run();
+  await second.engine.run();
+  server.setOnline(false);
+  first.edit(state => { state.oaths.push({ date: "2026-11-15", text: "First", updatedAt: "2026-11-15T08:00:00Z" }); });
+  second.edit(state => { state.oaths.push({ date: "2026-11-16", text: "Second", updatedAt: "2026-11-16T08:00:00Z" }); });
+  await first.engine.run();
+  await second.engine.run();
+  server.setOnline(true);
+  await first.engine.run();
+  await second.engine.run();
+  await first.engine.run();
+  assert.deepEqual(first.state.oaths.map(oath => oath.text).sort(), ["First", "Second"]);
+  assert.deepEqual(second.state.oaths.map(oath => oath.text).sort(), ["First", "Second"]);
+  assert.match(first.status, /All changes synced/);
+});
+
 test("legacy data merges automatically after backup, keeping cloud conflicts and distinct local entries", async () => {
   const server = cloud();
   const first = device(server, "a", initialState());
