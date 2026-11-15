@@ -34,11 +34,10 @@ function cloud() {
   };
 }
 
-function device(transport, writer, seed, existingData = false) {
+function device(transport, writer, seed, existingData = false, backupError = null) {
   let savedState = structuredClone(seed);
   let savedMetadata = core.createMetadata(writer, existingData, core.recordsFromState(seed));
   let clock = 100;
-  let conflicts = {};
   let status = "";
   let backups = 0;
   const engine = create({
@@ -47,11 +46,10 @@ function device(transport, writer, seed, existingData = false) {
     transport,
     now: () => clock++,
     persist(state, metadata) { savedState = structuredClone(state); savedMetadata = structuredClone(metadata); },
-    async createRecoveryBackup() { backups++; },
+    async createRecoveryBackup() { backups++; if (backupError) throw backupError; },
     validateState: state => state,
     onState() {},
     onPending() {},
-    onConflicts(value) { conflicts = value; },
     onStatus(message) { status = message; },
     onError() {}
   });
@@ -61,7 +59,6 @@ function device(transport, writer, seed, existingData = false) {
     get state() { return savedState; },
     get meta() { return savedMetadata; },
     get status() { return status; },
-    get conflicts() { return conflicts; },
     get backups() { return backups; }
   };
 }
@@ -94,21 +91,55 @@ test("fresh devices merge independent offline edits without overwriting establis
   assert.deepEqual(second.state.completions["2026-11-15"], []);
 });
 
-test("legacy conflicts stop until a choice, after a recovery copy is created", async () => {
+test("legacy data merges automatically after backup, keeping cloud conflicts and distinct local entries", async () => {
   const server = cloud();
   const first = device(server, "a", initialState());
   await first.engine.run();
   const legacyState = initialState();
   legacyState.name = "Legacy";
+  legacyState.journal.push({ id: "local", text: "kept", createdAt: "2026-11-15T00:00:00.000Z" });
   const second = device(server, "b", legacyState, true);
   await second.engine.run();
   assert.equal(second.backups, 1);
-  assert.equal(second.conflicts['["name"]'].remote.value, "Alex");
   assert.equal(server.records['["name"]'].value, "Alex");
-  second.engine.resolveConflict('["name"]', "local");
+  assert.equal(second.state.name, "Alex");
+  assert.equal(second.state.journal[0].text, "kept");
+  assert.equal(second.meta.bootstrap, "ready");
+  assert.match(second.status, /All changes synced/);
+});
+
+test("legacy bootstrap preserves higher growth and pushes edits already queued on the device", async () => {
+  const server = cloud();
+  const first = device(server, "a", initialState());
+  await first.engine.run();
+  const legacyState = initialState();
+  legacyState.growthPoints = 10;
+  const second = device(server, "b", legacyState, true);
+  second.edit(state => { state.name = "Edited on phone"; });
   await second.engine.run();
-  assert.equal(server.records['["name"]'].value, "Legacy");
-  assert.equal(second.state.name, "Legacy");
+  assert.equal(server.records['["growth"]'].value, 10);
+  assert.equal(server.records['["name"]'].value, "Edited on phone");
+  assert.deepEqual(second.meta.pending, {});
+});
+
+test("legacy migration respects cloud deletions and stops if the recovery copy fails", async () => {
+  const server = cloud();
+  const first = device(server, "a", initialState());
+  first.edit(state => { state.journal.push({ id: "one", text: "old", createdAt: "2026-11-15T00:00:00.000Z" }); });
+  await first.engine.run();
+  first.edit(state => { state.journal = []; });
+  await first.engine.run();
+  const legacyState = initialState();
+  legacyState.journal.push({ id: "one", text: "old", createdAt: "2026-11-15T00:00:00.000Z" });
+  const failed = device(server, "b", legacyState, true, new Error("Backup unavailable"));
+  await failed.engine.run();
+  assert.match(failed.status, /Backup unavailable/);
+  assert.equal(failed.meta.bootstrap, "legacy");
+  assert.equal(failed.state.journal.length, 1);
+  const second = device(server, "c", legacyState, true);
+  await second.engine.run();
+  assert.deepEqual(second.state.journal, []);
+  assert.equal(server.records['["journal","one"]'].deleted, true);
 });
 
 test("an edit made while a write is in flight stays queued and reaches the cloud", async () => {

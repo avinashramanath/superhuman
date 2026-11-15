@@ -11,7 +11,6 @@
     let generation = 0;
     let running = false;
     let rerun = false;
-    let conflicts = {};
 
     function persist(nextState, nextMetadata) {
       options.persist(nextState, nextMetadata);
@@ -45,11 +44,11 @@
       if (running) rerun = true;
     }
 
-    function stageValues(values, skipPending = true, minimumTime = 0) {
+    function stageValues(values) {
       const next = structuredClone(metadata);
       for (const [recordKey, value] of Object.entries(values)) {
-        if (skipPending && next.pending[recordKey]) continue;
-        const time = Math.max(options.now(), next.clock + 1, minimumTime);
+        if (next.pending[recordKey]) continue;
+        const time = Math.max(options.now(), next.clock + 1);
         if (!Number.isSafeInteger(time)) throw new Error("The sync clock is invalid.");
         next.clock = time;
         next.pending[recordKey] = {
@@ -79,41 +78,31 @@
         throw new Error("The saved sync setup is invalid. Local data was not changed.");
       }
       const plan = core.planLegacyImport(metadata.legacy, remote);
-      conflicts = {};
-      for (const [recordKey, conflict] of Object.entries(plan.conflicts)) {
-        if (!metadata.pending[recordKey]) conflicts[recordKey] = conflict;
-      }
-      if (Object.keys(conflicts).length) {
-        options.onConflicts(conflicts);
-        options.onStatus("Open Sync to resolve older data conflicts.", true);
-        return false;
-      }
       const next = stageValues(plan.uploads);
+      for (const [recordKey, pending] of Object.entries(next.pending)) {
+        const cloudRecord = remote[recordKey];
+        if (!cloudRecord || core.compareVersions(pending, cloudRecord) > 0) continue;
+        const time = Math.max(options.now(), next.clock + 1, cloudRecord.client_time + 1);
+        if (!Number.isSafeInteger(time)) throw new Error("The sync clock is invalid.");
+        next.clock = time;
+        next.pending[recordKey] = { ...pending, client_time: time };
+      }
+      const growthKey = JSON.stringify(["growth"]);
+      const growth = plan.conflicts[growthKey];
+      if (growth && !growth.remote.deleted && growth.local > growth.remote.value && !next.pending[growthKey]) {
+        const minimum = growth.remote.client_time + 1;
+        if (!Number.isSafeInteger(minimum)) throw new Error("The cloud record has an invalid timestamp.");
+        const time = Math.max(options.now(), next.clock + 1, minimum);
+        if (!Number.isSafeInteger(time)) throw new Error("The sync clock is invalid.");
+        next.clock = time;
+        next.pending[growthKey] = {
+          record_key: growthKey, value: growth.local, deleted: false, client_time: time, writer: next.writer
+        };
+      }
       next.bootstrap = "ready";
       next.legacy = null;
       persist(current, next);
-      options.onConflicts({});
       return true;
-    }
-
-    function resolveConflict(recordKey, choice) {
-      const conflict = conflicts[recordKey];
-      if (!conflict || (choice !== "local" && choice !== "remote")) {
-        throw new Error("That sync conflict is no longer available.");
-      }
-      const next = structuredClone(metadata);
-      if (choice === "local") {
-        const minimum = conflict.remote.client_time + 1;
-        if (!Number.isSafeInteger(minimum)) throw new Error("The cloud record has an invalid timestamp.");
-        const staged = stageValues({ [recordKey]: conflict.local }, false, minimum);
-        next.clock = staged.clock;
-        next.pending = staged.pending;
-      }
-      delete next.legacy[recordKey];
-      persist(current, next);
-      delete conflicts[recordKey];
-      options.onConflicts(conflicts);
-      options.onPending();
     }
 
     async function syncOnce() {
@@ -147,7 +136,6 @@
       if (current.reordering) nextState.reordering = current.reordering;
       persist(nextState, { ...metadata, clock: Math.max(metadata.clock, latestTime) });
       options.onState(structuredClone(nextState));
-      options.onConflicts({});
       options.onStatus(Object.keys(metadata.pending).length ? "Changes are waiting to sync." : "All changes synced.", false);
     }
 
@@ -170,7 +158,7 @@
       }
     }
 
-    return { saveLocal, replaceFromStorage, resolveConflict, run };
+    return { saveLocal, replaceFromStorage, run };
   }
 
   return { create };

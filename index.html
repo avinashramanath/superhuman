@@ -21,8 +21,9 @@
         <button class="icon-button install-button" id="install-button" type="button" aria-label="Install app" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4h14v-4"/></svg>
         </button>
+        <button class="backup-button" id="backup-nav-button" type="button">Backup</button>
       </header>
-      <p class="auto-sync-status" id="auto-sync-status" role="status" aria-live="polite">Preparing automatic sync…</p>
+      <p class="auto-sync-status" id="auto-sync-status" role="status" aria-live="polite" hidden></p>
 
       <section class="view is-active" id="today-view" aria-labelledby="today-title">
         <div class="section-heading">
@@ -325,9 +326,6 @@
         <button class="nav-item" type="button" data-view="journal">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Zm0 0a3 3 0 0 0-3 3v12a3 3 0 0 1 3-3h10M9 8h5m-5 4h5"/></svg><span>Journal</span>
         </button>
-        <button class="nav-item" id="backup-nav-button" type="button" aria-label="Sync and backup">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2m-2 15h4v-5h-3V9h-2v8z"/></svg><span>Sync</span>
-        </button>
       </nav>
     </main>
 
@@ -376,11 +374,10 @@
 
     <dialog class="sync-dialog" id="sync-dialog" aria-labelledby="sync-title">
       <div class="dialog-heading">
-        <div><p class="eyebrow">SYNC & BACKUP</p><h2 id="sync-title">Your data</h2></div>
+        <div><p class="eyebrow">YOUR DATA</p><h2 id="sync-title">Backup & recovery</h2></div>
         <button class="icon-button sync-close-button" id="close-sync-dialog" type="button" aria-label="Close">×</button>
       </div>
       <p class="sync-intro">Changes sync automatically across devices. Synced data, including journal entries, is public: anyone can read, change, or delete it.</p>
-      <div id="auto-sync-conflicts" hidden></div>
       <button class="sync-secondary-button" id="restore-local-recovery" type="button">Restore pre-sync local copy</button>
       <p class="sync-status" id="sync-status" role="status" aria-live="polite"></p>
       <details class="legacy-sync">
@@ -417,7 +414,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite">
       <span id="toast-message">Task completed!</span>
-      <button id="undo-button" type="button">Undo</button>
     </div>
     <script src="./sync-core.js"></script>
     <script src="./sync-transport.js"></script>

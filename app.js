@@ -113,7 +113,6 @@
   let storageBlocked = false;
   let selectedIcon = ICONS[0];
   let editingId = null;
-  let undoRecord = null;
   let toastTimer = null;
   let deferredInstall = null;
   let cravingInterval = null;
@@ -243,44 +242,13 @@
   function setAutoSyncStatus(message, isError = false) {
     $("auto-sync-status").textContent = message;
     $("auto-sync-status").dataset.error = String(isError);
+    $("auto-sync-status").hidden = !isError;
   }
 
   function scheduleAutoSync(delay = 1500) {
     if (!autoSync) return;
     clearTimeout(autoSyncTimer);
     autoSyncTimer = setTimeout(() => autoSync.run(), delay);
-  }
-
-  function renderSyncConflicts(conflicts) {
-    const container = $("auto-sync-conflicts");
-    container.replaceChildren();
-    const entries = Object.entries(conflicts);
-    container.hidden = !entries.length;
-    for (const [key, conflict] of entries) {
-      const section = document.createElement("section");
-      section.className = "auto-sync-conflict";
-      const title = document.createElement("strong");
-      title.textContent = `Choose a version for ${key}`;
-      const details = document.createElement("pre");
-      details.textContent = `This device:\n${JSON.stringify(conflict.local, null, 2)}\n\nCloud:\n${conflict.remote.deleted ? "(deleted)" : JSON.stringify(conflict.remote.value, null, 2)}`;
-      section.append(title, details);
-      for (const [choice, label] of [["local", "Keep this device"], ["remote", "Keep cloud"]]) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "sync-secondary-button";
-        button.textContent = label;
-        button.addEventListener("click", () => {
-          try {
-            autoSync.resolveConflict(key, choice);
-          } catch (error) {
-            console.error("Could not resolve the sync conflict.", error);
-            setAutoSyncStatus(error instanceof Error ? error.message : "Could not resolve the conflict.", true);
-          }
-        });
-        section.append(button);
-      }
-      container.append(section);
-    }
   }
 
   function initializeAutoSync() {
@@ -310,7 +278,6 @@
           setAutoSyncStatus("Changes are waiting to sync.");
           scheduleAutoSync();
         },
-        onConflicts: renderSyncConflicts,
         onStatus: setAutoSyncStatus,
         onError: error => console.error("Automatic sync failed.", error)
       });
@@ -798,9 +765,8 @@
     }).join("");
   }
 
-  function showToast(message, allowUndo = false) {
+  function showToast(message) {
     $("toast-message").textContent = message;
-    $("undo-button").hidden = !allowUndo;
     $("toast").classList.add("is-visible");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => $("toast").classList.remove("is-visible"), 4500);
@@ -818,22 +784,8 @@
       $("evolution-card").classList.add("is-pulsing");
       setTimeout(() => $("evolution-card").classList.remove("is-pulsing"), 850);
     }
-    undoRecord = { id, done };
     save();
     render();
-    if (done) showToast("A little win, added to your day.", true);
-    else showToast("Task marked as not done.");
-  }
-
-  function undoToggle() {
-    if (!undoRecord) return;
-    const record = undoRecord;
-    undoRecord = null;
-    const current = completionFor(localDateKey());
-    state.completions[localDateKey()] = record.done ? current.filter(id => id !== record.id) : [...current, record.id];
-    save();
-    render();
-    $("toast").classList.remove("is-visible");
   }
 
   function openTaskDialog(task = null) {
@@ -1203,7 +1155,6 @@
     }
   });
   document.querySelectorAll(".close-dialog").forEach(button => button.addEventListener("click", () => $("task-dialog").close()));
-  $("undo-button").addEventListener("click", undoToggle);
   document.querySelector(".bottom-nav").addEventListener("click", event => {
     const button = event.target.closest("[data-view]");
     if (button) switchView(button.dataset.view);
@@ -1223,7 +1174,6 @@
   });
   $("journal-cancel-edit").addEventListener("click", () => {
     clearJournalEditor();
-    showToast("Edit cancelled. Your saved page is unchanged.");
   });
   $("journal-entry-form").addEventListener("submit", async event => {
     event.preventDefault();
@@ -1257,7 +1207,6 @@
       }
       clearJournalEditor();
       await renderJournal();
-      showToast(existing ? "Your page was updated." : "A moment saved.");
     } catch (error) {
       console.error("Could not save your journal entry.", error);
       $("journal-error").textContent = error instanceof Error ? error.message : "Could not save the journal entry. Try again.";
@@ -1307,7 +1256,6 @@
       if (journalEditingId === entry.id) clearJournalEditor();
       closeJournalDeleteDialog();
       await renderJournal();
-      showToast("Entry removed from this device.");
     } catch (error) {
       console.error("Could not delete the journal entry.", error);
       $("journal-error").textContent = error instanceof Error ? error.message : "Could not delete the entry.";
@@ -1453,7 +1401,6 @@
     state.smoking = { ...normalizeSmoking(), ...settings, startedAt: startDate.toISOString(), lapses: [], bestRunMs: 0 };
     save();
     render();
-    showToast("Your next chapter has started. One moment at a time.");
   });
   $("quit-edit-form").addEventListener("submit", event => {
     event.preventDefault();
@@ -1477,7 +1424,6 @@
     state.smoking = { ...state.smoking, ...settings, startedAt: startDate.toISOString() };
     save();
     render();
-    showToast("Your quit plan was updated.");
   });
   $("log-slip-button").addEventListener("click", () => $("lapse-dialog").showModal());
   $("close-lapse-dialog").addEventListener("click", () => $("lapse-dialog").close());
@@ -1490,7 +1436,6 @@
     save();
     $("lapse-dialog").close();
     render();
-    showToast("Logged. Your effort and best run are still here.");
   });
   $("craving-button").addEventListener("click", startCravingPause);
   $("craving-done").addEventListener("click", () => {
