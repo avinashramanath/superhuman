@@ -118,6 +118,7 @@
   let journalSelectedMood = "steady";
   let journalDeleteId = null;
   let taskDrag = null;
+  let suppressTaskClickUntil = 0;
   let lastSmokeMinute = null;
   const JOURNAL_MOODS = {
     steady: ["◉", "Steady"],
@@ -402,9 +403,11 @@
   }
 
   function renderRoutine() {
+    if (taskDrag) finishTaskDrag(true);
     const list = $("routine-list");
     const today = localDateKey();
-    const todayRoutine = state.tasks.map(task => task.id);
+    const orderedTasks = tasksByGroup(state.tasks);
+    const todayRoutine = orderedTasks.map(task => task.id);
     if (JSON.stringify(state.routines[today]) !== JSON.stringify(todayRoutine)) {
       state.routines[today] = todayRoutine;
       save();
@@ -426,9 +429,9 @@
       return;
     }
     const groups = [];
-    for (const task of state.tasks) {
-      const name = (task.group || "").trim() || "Daily flow";
-      if (!groups.length || groups[groups.length - 1][0] !== name) groups.push([name, []]);
+    for (const task of orderedTasks) {
+      const name = groupLabel(task.group);
+      if (!groups.length || groupKey(groups[groups.length - 1][0]) !== groupKey(name)) groups.push([name, []]);
       groups[groups.length - 1][1].push(task);
     }
     list.innerHTML = groups.map(([group, tasks]) => {
@@ -444,7 +447,7 @@
               <span class="task-name">${escapeHtml(task.name)}</span>${isDone ? '<span class="task-detail">Done for today</span>' : ""}
             </div>
             <span class="task-icon" aria-hidden="true">${escapeHtml(task.icon || "✨")}</span>
-            <button class="task-drag-handle" type="button" data-action="reorder" aria-label="Reorder ${escapeHtml(task.name)}. Hold and drag, or use arrow keys." ${state.tasks.length < 2 ? "disabled" : ""}>⋮⋮</button>
+            <button class="task-drag-handle" type="button" data-action="reorder" aria-label="Reorder ${escapeHtml(task.name)}. Hold and drag the task, or use arrow keys." ${state.tasks.length < 2 ? "disabled" : ""}>⋮⋮</button>
           </div>
         </article>`;
       }).join("");
@@ -581,34 +584,82 @@
     render();
   }
 
+  function groupLabel(group) {
+    return (group || "").trim().replace(/\s+/g, " ") || "Daily flow";
+  }
+
+  function groupKey(group) {
+    return groupLabel(group).toLocaleLowerCase();
+  }
+
+  function tasksByGroup(tasks) {
+    const groups = new Map();
+    for (const task of tasks) {
+      const key = groupKey(task.group);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(task);
+    }
+    return [...groups.values()].flat();
+  }
+
+  function insertTaskInGroup(tasks, task) {
+    const ordered = tasksByGroup(tasks);
+    const key = groupKey(task.group);
+    let index = ordered.length;
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      if (groupKey(ordered[i].group) === key) {
+        task.group = ordered[i].group || "";
+        index = i + 1;
+        break;
+      }
+    }
+    ordered.splice(index, 0, task);
+    return ordered;
+  }
+
   function openTaskDialog(task = null) {
     editingId = task ? task.id : null;
     selectedIcon = task ? task.icon : ICONS[0];
     $("dialog-title").textContent = task ? "Edit your task" : "Add a routine task";
     $("task-name").value = task ? task.name : "";
-    $("task-group").value = task ? task.group : "";
+    const groups = [];
+    for (const item of state.tasks) {
+      if (!groups.some(group => groupKey(group) === groupKey(item.group))) groups.push(groupLabel(item.group));
+    }
+    if (!groups.some(group => groupKey(group) === groupKey(""))) groups.unshift("Daily flow");
+    $("task-group").innerHTML = groups.map(group => `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`).join("") + '<option value="">+ New group</option>';
+    $("task-group").value = groups.find(group => groupKey(group) === groupKey(task?.group));
+    $("new-task-group").value = "";
+    $("new-task-group").setCustomValidity("");
+    $("new-task-group").hidden = true;
+    $("new-task-group").required = false;
     $("delete-task-button").hidden = !task;
     $("task-name").disabled = !task && state.tasks.length >= MAX_TASKS;
     $("task-group").disabled = !task && state.tasks.length >= MAX_TASKS;
     $("task-form").querySelector('[type="submit"]').disabled = !task && state.tasks.length >= MAX_TASKS;
-    $("group-options").innerHTML = [...new Set(state.tasks.map(item => item.group).filter(Boolean))].map(group => `<option value="${escapeHtml(group)}"></option>`).join("");
     $("emoji-options").innerHTML = ICONS.map(icon => `<button class="emoji-option${icon === selectedIcon ? " is-selected" : ""}" type="button" data-icon="${icon}" aria-label="${icon}" aria-pressed="${icon === selectedIcon}">${icon}</button>`).join("");
     $("task-dialog").showModal();
     if (!task) $("task-name").focus();
   }
 
   function moveTask(id, direction) {
-    const index = state.tasks.findIndex(task => task.id === id);
+    const ordered = tasksByGroup(state.tasks);
+    const index = ordered.findIndex(task => task.id === id);
     if (index < 0) return;
-    const target = state.tasks[index + direction];
-    if (target) reorderTask(id, target.id);
+    const target = ordered[index + direction];
+    if (target) reorderTask(id, target.id, direction > 0);
   }
 
-  function reorderTask(id, targetId) {
-    const from = state.tasks.findIndex(item => item.id === id);
-    const to = state.tasks.findIndex(item => item.id === targetId);
+  function reorderTask(id, targetId, after) {
+    const tasks = tasksByGroup(state.tasks);
+    const from = tasks.findIndex(item => item.id === id);
+    const to = tasks.findIndex(item => item.id === targetId);
     if (from < 0 || to < 0 || from === to) return;
-    state.tasks.splice(to, 0, state.tasks.splice(from, 1)[0]);
+    const task = tasks.splice(from, 1)[0];
+    const target = tasks.find(item => item.id === targetId);
+    task.group = target.group || "";
+    tasks.splice(tasks.indexOf(target) + (after ? 1 : 0), 0, task);
+    state.tasks = tasks;
     save();
     render();
   }
@@ -846,6 +897,10 @@
   }
 
   $("routine-list").addEventListener("click", event => {
+    if (Date.now() < suppressTaskClickUntil) {
+      event.preventDefault();
+      return;
+    }
     const button = event.target.closest("[data-action]");
     if (!button) return;
     const card = button.closest(".task-wrap");
@@ -880,98 +935,179 @@
     }
   });
 
-  $("routine-list").addEventListener("touchstart", event => {
-    const card = event.target.closest(".task-card");
-    if (!card || event.target.closest(".task-drag-handle, .task-check")) return;
-    const touch = event.changedTouches[0];
-    card.dataset.touchX = touch.clientX;
-    card.dataset.touchY = touch.clientY;
-    card.classList.add("is-dragging");
-  }, { passive: true });
-
-  $("routine-list").addEventListener("touchmove", event => {
-    const card = event.target.closest(".task-card.is-dragging");
-    if (!card || card.dataset.touchX === undefined) return;
-    const touch = event.changedTouches[0];
-    const delta = Math.min(0, Math.max(-120, touch.clientX - Number(card.dataset.touchX)));
-    if (Math.abs(touch.clientY - Number(card.dataset.touchY)) < 30) card.style.transform = `translateX(${delta}px)`;
-  }, { passive: true });
-
-  $("routine-list").addEventListener("touchend", event => {
-    const card = event.target.closest(".task-card.is-dragging");
-    if (!card) return;
-    const delta = event.changedTouches[0].clientX - Number(card.dataset.touchX || 0);
-    card.classList.remove("is-dragging");
-    card.style.transform = "";
-    if (delta < -75) {
-      card.dataset.swiped = "true";
-      toggleTask(card.closest(".task-wrap").dataset.id, true);
-      setTimeout(() => delete card.dataset.swiped, 500);
-    }
-    delete card.dataset.touchX;
-    delete card.dataset.touchY;
-  }, { passive: true });
-
-  $("routine-list").addEventListener("pointerdown", event => {
-    const handle = event.target.closest(".task-drag-handle");
-    if (!handle || handle.disabled || !event.isPrimary || event.button !== 0) return;
-    const card = handle.closest(".task-wrap");
-    const drag = { handle, card, pointerId: event.pointerId, x: event.clientX, y: event.clientY, active: false, target: null };
+  function startTaskDrag(card, x, y, kind, id) {
+    if (taskDrag || (kind === "mouse" && state.tasks.length < 2)) return;
+    const drag = { card, kind, id, x, y, currentX: x, currentY: y, active: false, target: null, after: false };
     taskDrag = drag;
-    handle.setPointerCapture(event.pointerId);
+    if (state.tasks.length < 2) return;
     drag.timer = setTimeout(() => {
       if (taskDrag !== drag) return;
       drag.active = true;
       card.classList.add("is-reordering");
+      const rect = card.getBoundingClientRect();
+      drag.offsetX = x - rect.left;
+      drag.offsetY = y - rect.top;
+      drag.ghost = card.cloneNode(true);
+      drag.ghost.classList.remove("is-reordering");
+      drag.ghost.classList.add("task-drag-ghost");
+      drag.ghost.setAttribute("aria-hidden", "true");
+      drag.ghost.style.width = `${rect.width}px`;
+      document.body.appendChild(drag.ghost);
+      if (kind === "mouse") card.setPointerCapture(id);
+      updateTaskDrag(x, y);
+      drag.scrollTimer = setInterval(() => {
+        const speed = drag.currentY < 90 ? -14 : drag.currentY > window.innerHeight - 100 ? 14 : 0;
+        if (speed) {
+          window.scrollBy(0, speed);
+          updateTaskDrag(drag.currentX, drag.currentY);
+        }
+      }, 50);
     }, 400);
-  });
-  $("routine-list").addEventListener("pointermove", event => {
+  }
+
+  function updateTaskDrag(x, y) {
     const drag = taskDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag) return;
+    drag.currentX = x;
+    drag.currentY = y;
     if (!drag.active) {
-      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 10) clearTimeout(drag.timer);
+      if (Math.hypot(x - drag.x, y - drag.y) > 10) clearTimeout(drag.timer);
       return;
     }
-    event.preventDefault();
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".task-wrap");
-    const valid = target && target !== drag.card ? target : null;
-    if (drag.target !== valid) {
-      drag.target?.classList.remove("is-drop-target");
-      drag.target = valid;
-      drag.target?.classList.add("is-drop-target");
+    drag.ghost.style.left = `${x - drag.offsetX}px`;
+    drag.ghost.style.top = `${y - drag.offsetY}px`;
+    const cards = [...$("routine-list").querySelectorAll(".task-wrap")];
+    let target = null;
+    let distance = Infinity;
+    for (const card of cards) {
+      const rect = card.getBoundingClientRect();
+      const gap = Math.max(rect.top - y, 0, y - rect.bottom);
+      if (gap < distance) {
+        target = card;
+        distance = gap;
+      }
     }
-    if (event.clientY < 70) window.scrollBy(0, -12);
-    else if (event.clientY > window.innerHeight - 90) window.scrollBy(0, 12);
-  });
-  function finishTaskDrag(event, cancelled = false) {
-    const drag = taskDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    clearTimeout(drag.timer);
-    drag.card.classList.remove("is-reordering");
-    drag.target?.classList.remove("is-drop-target");
-    taskDrag = null;
-    if (!cancelled && drag.active && drag.target) reorderTask(drag.card.dataset.id, drag.target.dataset.id);
+    drag.target?.classList.remove("drop-before", "drop-after");
+    drag.target = target && target !== drag.card ? target : null;
+    if (drag.target) {
+      const rect = drag.target.getBoundingClientRect();
+      drag.after = y >= (rect.top + rect.bottom) / 2;
+      drag.target.classList.add(drag.after ? "drop-after" : "drop-before");
+    }
   }
-  $("routine-list").addEventListener("pointerup", event => finishTaskDrag(event));
-  $("routine-list").addEventListener("pointercancel", event => finishTaskDrag(event, true));
+
+  function finishTaskDrag(cancelled = false) {
+    const drag = taskDrag;
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    clearInterval(drag.scrollTimer);
+    drag.card.classList.remove("is-reordering");
+    const surface = drag.card.querySelector(".task-card");
+    surface.classList.remove("is-dragging");
+    surface.style.transform = "";
+    drag.target?.classList.remove("drop-before", "drop-after");
+    drag.ghost?.remove();
+    taskDrag = null;
+    if (drag.active) suppressTaskClickUntil = Date.now() + 600;
+    if (!cancelled && drag.active && drag.target) reorderTask(drag.card.dataset.id, drag.target.dataset.id, drag.after);
+  }
+
+  $("routine-list").addEventListener("contextmenu", event => {
+    if (event.target.closest(".task-wrap") && !event.target.closest(".task-check")) event.preventDefault();
+  });
+  $("routine-list").addEventListener("touchstart", event => {
+    if (event.touches.length !== 1) {
+      finishTaskDrag(true);
+      return;
+    }
+    const card = event.target.closest(".task-wrap");
+    if (!card || event.target.closest(".task-check")) return;
+    const touch = event.changedTouches[0];
+    startTaskDrag(card, touch.clientX, touch.clientY, "touch", touch.identifier);
+  }, { passive: true });
+  $("routine-list").addEventListener("touchmove", event => {
+    const drag = taskDrag;
+    if (!drag || drag.kind !== "touch") return;
+    const touch = [...event.changedTouches].find(item => item.identifier === drag.id);
+    if (!touch) return;
+    updateTaskDrag(touch.clientX, touch.clientY);
+    if (drag.active) event.preventDefault();
+    else if (Math.abs(touch.clientY - drag.y) < 30) {
+      const surface = drag.card.querySelector(".task-card");
+      surface.classList.add("is-dragging");
+      surface.style.transform = `translateX(${Math.min(0, Math.max(-120, touch.clientX - drag.x))}px)`;
+    }
+  }, { passive: false });
+  $("routine-list").addEventListener("touchend", event => {
+    const drag = taskDrag;
+    if (!drag || drag.kind !== "touch") return;
+    const touch = [...event.changedTouches].find(item => item.identifier === drag.id);
+    if (!touch) return;
+    if (drag.active) updateTaskDrag(touch.clientX, touch.clientY);
+    const swipe = !drag.active && touch.clientX - drag.x < -75 && Math.abs(touch.clientY - drag.y) < 30;
+    const id = drag.card.dataset.id;
+    finishTaskDrag();
+    if (swipe) {
+      suppressTaskClickUntil = Date.now() + 600;
+      toggleTask(id, true);
+    }
+  });
+  $("routine-list").addEventListener("touchcancel", () => finishTaskDrag(true));
+  $("routine-list").addEventListener("pointerdown", event => {
+    if (event.pointerType === "touch" || !event.isPrimary || event.button !== 0 || event.target.closest(".task-check")) return;
+    const card = event.target.closest(".task-wrap");
+    if (card) startTaskDrag(card, event.clientX, event.clientY, "mouse", event.pointerId);
+  });
+  window.addEventListener("pointermove", event => {
+    const drag = taskDrag;
+    if (!drag || drag.kind !== "mouse" || drag.id !== event.pointerId) return;
+    updateTaskDrag(event.clientX, event.clientY);
+    if (drag.active) event.preventDefault();
+  });
+  window.addEventListener("pointerup", event => {
+    const drag = taskDrag;
+    if (drag && drag.kind === "mouse" && drag.id === event.pointerId) finishTaskDrag();
+  });
+  window.addEventListener("pointercancel", event => {
+    if (taskDrag?.kind === "mouse" && taskDrag.id === event.pointerId) finishTaskDrag(true);
+  });
+  window.addEventListener("blur", () => finishTaskDrag(true));
 
   $("add-task-button").addEventListener("click", () => openTaskDialog());
+  $("task-group").addEventListener("change", () => {
+    const isNew = !$("task-group").value;
+    $("new-task-group").hidden = !isNew;
+    $("new-task-group").required = isNew;
+    $("new-task-group").setCustomValidity("");
+    if (isNew) $("new-task-group").focus();
+  });
   $("task-form").addEventListener("submit", event => {
     event.preventDefault();
     const name = $("task-name").value.trim();
-    const group = $("task-group").value.trim();
+    const selectedGroup = $("task-group").value || $("new-task-group").value;
+    const group = groupKey(selectedGroup) === groupKey("") ? "" : groupLabel(selectedGroup);
+    if (!$("task-group").value && !$("new-task-group").value.trim()) {
+      $("new-task-group").setCustomValidity("Enter a group name.");
+      $("new-task-group").reportValidity();
+      return;
+    }
     if (!name) return;
     if (editingId) {
       const task = state.tasks.find(item => item.id === editingId);
-      if (task) Object.assign(task, { name, group, icon: selectedIcon });
+      if (task) {
+        const moved = groupKey(task.group) !== groupKey(group);
+        Object.assign(task, { name, group, icon: selectedIcon });
+        if (moved) state.tasks = insertTaskInGroup(state.tasks.filter(item => item.id !== task.id), task);
+      }
     } else {
       if (state.tasks.length >= MAX_TASKS) return;
-      state.tasks.push({ id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, group, icon: selectedIcon });
+      state.tasks = insertTaskInGroup(state.tasks, { id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, group, icon: selectedIcon });
     }
     save();
     $("task-dialog").close();
     render();
   });
+  $("new-task-group").addEventListener("input", () => $("new-task-group").setCustomValidity(""));
   $("delete-task-button").addEventListener("click", () => {
     if (!editingId) return;
     state.tasks = state.tasks.filter(task => task.id !== editingId);

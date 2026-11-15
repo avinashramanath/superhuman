@@ -309,8 +309,8 @@
         <label class="field-label" for="task-name">Task name</label>
         <input id="task-name" name="name" maxlength="60" placeholder="e.g. Take a mindful walk" required>
         <label class="field-label" for="task-group">Group</label>
-        <input id="task-group" name="group" maxlength="30" list="group-options" placeholder="e.g. Mind & body">
-        <datalist id="group-options"></datalist>
+        <select id="task-group" name="group"></select>
+        <input id="new-task-group" name="new-group" maxlength="30" placeholder="New group name" aria-label="New group name" hidden>
         <div class="emoji-picker">
           <span class="field-label">Pick an icon</span>
           <div id="emoji-options" class="emoji-options"></div>

@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "superhuman-shell-v22";
+const CACHE_NAME = "superhuman-shell-v23";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./sync-core.js", "./sync-transport.js", "./auto-sync.js", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", event => {
