@@ -600,7 +600,6 @@
     $("progress-percent").textContent = `${percent}%`;
     $("progress-ring").setAttribute("aria-label", `${percent}% complete`);
     $("progress-fill").style.width = `${percent}%`;
-    $("progress-message").textContent = percent === 100 && state.tasks.length ? "You showed up for yourself today. Beautiful work." : doneCount ? "You're building momentum. Keep your own pace." : "Small steps count. Let's get started.";
     $("routine-caption").textContent = `${state.tasks.length} of ${MAX_TASKS} daily tasks`;
     $("add-task-button").disabled = state.tasks.length >= MAX_TASKS;
     $("add-task-button").setAttribute("aria-label", state.tasks.length >= MAX_TASKS ? "Routine is full" : "Add a routine task");
@@ -628,7 +627,7 @@
           <div class="task-card${isDone ? " is-done" : ""}" data-index="${index}">
             <button class="task-check${isDone ? " is-checked" : ""}" type="button" data-action="toggle" aria-pressed="${isDone}" aria-label="${isDone ? "Mark incomplete" : "Complete"} ${escapeHtml(task.name)}">${isDone ? "✓" : ""}</button>
             <div class="task-copy" role="button" tabindex="0" data-action="edit" aria-label="Edit ${escapeHtml(task.name)}">
-              <span class="task-name">${escapeHtml(task.name)}</span><span class="task-detail">${isDone ? "Done for today" : "Tap to edit"}</span>
+              <span class="task-name">${escapeHtml(task.name)}</span>${isDone ? '<span class="task-detail">Done for today</span>' : ""}
             </div>
             <span class="task-icon" aria-hidden="true">${escapeHtml(task.icon || "✨")}</span>
             ${state.reordering ? `<div class="task-actions"><button type="button" data-action="up" aria-label="Move up in ${escapeHtml(group)}" ${siblingIndex === 0 ? "disabled" : ""}>↑</button><button type="button" data-action="down" aria-label="Move down in ${escapeHtml(group)}" ${siblingIndex === siblings.length - 1 ? "disabled" : ""}>↓</button></div>` : ""}
@@ -637,7 +636,7 @@
       }).join("");
       return `<section class="group-panel">
         <header class="group-heading">
-          <div><p class="group-kicker">ROUTINE GROUP</p><h3 class="routine-group">${escapeHtml(group)}</h3></div>
+          <div><h3 class="routine-group">${escapeHtml(group)}</h3></div>
           <span class="group-count">${groupDone}<i>/</i>${tasks.length}</span>
           <div class="group-track"><span style="width:${groupPercent}%"></span></div>
         </header>
@@ -689,7 +688,7 @@
     $("journal-char-count").textContent = `${$("journal-text").value.length} / 3000`;
     $("journal-error").hidden = true;
     if (!entries.length) {
-      $("journal-entries").innerHTML = '<div class="journal-empty"><span aria-hidden="true">✧</span><h3>Your first page is waiting.</h3><p>A sentence or a small thing you noticed. It all belongs here.</p></div>';
+      $("journal-entries").innerHTML = '<div class="journal-empty"><span aria-hidden="true">✧</span><h3>No entries yet.</h3></div>';
       return;
     }
 
@@ -717,21 +716,6 @@
       <div class="stat-card"><strong>${best}</strong><span>best run ✦</span></div>
       <div class="stat-card"><strong>${fullDays(state)}</strong><span>full routine days</span></div>
       <div class="stat-card"><strong>${totalCompletions(state)}</strong><span>tasks completed</span></div>`;
-    const todayComplete = isFullDay(state, todayKey);
-    const yesterday = new Date(`${todayKey}T12:00:00`);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayKey = localDateKey(yesterday);
-    const yesterdayComplete = isFullDay(state, yesterdayKey);
-    const hasTodayCheckIn = completionFor(todayKey).length > 0;
-    $("streak-guidance").textContent = todayComplete
-      ? `Today's full routine is registered. Your ${streak}-day run is active.`
-      : yesterdayComplete
-        ? `Your ${streak}-day run is ready. Finish today's routine to keep it going.`
-        : hasTodayCheckIn
-          ? `Today isn't a full routine day yet. No streak day is registered until every task is done. Your best run of ${best} stays yours.`
-          : best
-            ? `No full routine was recorded yesterday, so the current run is paused. Your best of ${best} days and earned badges stay yours.`
-            : "A streak day registers when you finish the whole routine. Missed days never erase your milestones.";
     const keys = Array.from({ length: 14 }, (_, offset) => {
       const date = new Date();
       date.setDate(date.getDate() - offset);
@@ -795,8 +779,6 @@
     $("task-name").value = task ? task.name : "";
     $("task-group").value = task ? task.group : "";
     $("delete-task-button").hidden = !task;
-    $("task-form-note").textContent = `${state.tasks.length} of ${MAX_TASKS} tasks in your routine.`;
-    $("task-form-note").hidden = !task && state.tasks.length >= MAX_TASKS;
     $("task-name").disabled = !task && state.tasks.length >= MAX_TASKS;
     $("task-group").disabled = !task && state.tasks.length >= MAX_TASKS;
     $("task-form").querySelector('[type="submit"]').disabled = !task && state.tasks.length >= MAX_TASKS;
@@ -937,7 +919,7 @@
     $("quit-best").textContent = formatSmokeDuration(smokeBestRunMs(state));
     $("quit-lapses").textContent = state.smoking.lapses.length;
     const origin = smokeTimerOrigin(state);
-    $("quit-clock-caption").textContent = `Since ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(origin))}. No rush. Just this moment.`;
+    $("quit-clock-caption").textContent = `Since ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(origin))}`;
     const estimatedCigarettes = state.smoking.cigarettesPerDay
       ? Math.floor(elapsed / 86400000 * state.smoking.cigarettesPerDay)
       : 0;

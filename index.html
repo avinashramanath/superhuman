@@ -36,10 +36,9 @@
 
         <div id="routine-list" class="routine-list" aria-live="polite"></div>
         <button class="add-task-button" id="add-task-button" type="button">
-          <span class="add-symbol" aria-hidden="true">+</span>
+          <span class="add-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
           <span>Add a little something</span>
         </button>
-        <p class="swipe-hint"><span aria-hidden="true">←</span> Swipe a task left when you're done</p>
 
         <section class="progress-card" aria-label="Today's progress">
           <div class="progress-top">
@@ -52,7 +51,6 @@
             </div>
           </div>
           <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-          <p class="progress-message" id="progress-message">Small steps count. Let's get started.</p>
         </section>
         <div class="welcome-row">
           <div>
@@ -67,7 +65,6 @@
         <div class="page-intro">
           <p class="eyebrow">YOU, IN THE MAKING</p>
           <h1 id="better-title">Better, by<br><span class="neon-title">your own design.</span></h1>
-          <p>Every task, every full day, every return adds to who you are becoming.</p>
         </div>
         <section class="evolution-card" id="evolution-card" data-stage="0" aria-label="Your evolving progress being">
           <div class="evolution-copy">
@@ -105,23 +102,19 @@
           </svg>
         </section>
         <section class="better-stats" id="better-stats" aria-label="Your growth so far"></section>
-        <section class="content-card better-note">
-          <span class="milestone-icon" aria-hidden="true">✦</span>
-          <p>Progress isn't a perfect streak. It's every small promise you keep—and every time you begin again.</p>
-        </section>
       </section>
 
       <section class="view journal-view" id="journal-view" aria-labelledby="journal-title" hidden>
         <div class="page-intro">
           <p class="eyebrow">A MOMENT, KEPT FOR YOU</p>
           <h1 id="journal-title">Your journal.</h1>
-          <p>Notice the small shifts. Journal entries are shared publicly when automatic sync is active.</p>
+          <p>Journal entries are public when automatic sync is active.</p>
         </div>
         <section class="journal-compose content-card">
           <div class="section-heading compact-heading"><div><h2 id="journal-form-title">A note to yourself</h2><p id="journal-today-label"></p></div></div>
           <form id="journal-entry-form">
             <label class="sr-only" for="journal-text">Write a journal entry</label>
-            <textarea id="journal-text" maxlength="3000" rows="5" placeholder="What are you noticing today? No need to make it perfect." ></textarea>
+            <textarea id="journal-text" maxlength="3000" rows="5" placeholder="Write an entry" ></textarea>
             <div class="journal-form-meta">
               <span class="journal-field-label">How are you feeling?</span>
               <div class="mood-picker" id="mood-picker" role="group" aria-label="Choose a mood">
@@ -157,10 +150,8 @@
         <div class="page-intro">
           <p class="eyebrow">LOOK HOW FAR YOU'VE COME</p>
           <h1 id="history-title">Your history</h1>
-          <p>A missed day pauses a streak, not your progress.</p>
         </div>
         <section class="stat-grid" id="history-stats"></section>
-        <p class="streak-guidance" id="streak-guidance"></p>
         <section class="content-card">
           <div class="section-heading compact-heading"><div><h2>Recent days</h2><p>Your last 14 days</p></div></div>
           <div class="history-list" id="history-list"></div>
@@ -175,7 +166,6 @@
         <div class="page-intro">
           <p class="eyebrow">PROOF OF YOUR PROGRESS</p>
           <h1 id="badges-title">Earn your<br>next signal.</h1>
-          <p>From first steps to a year of momentum, every milestone stays yours.</p>
         </div>
         <div class="badge-summary" id="badge-summary"></div>
         <div class="badge-grid" id="badge-grid"></div>
@@ -185,7 +175,6 @@
         <div class="page-intro">
           <p class="eyebrow">A DIFFERENT KIND OF STRENGTH</p>
           <h1 id="quit-title">Conquer<br><span class="quit-title-accent">smoking.</span></h1>
-          <p>One craving, one moment, one choice at a time. This path is yours.</p>
         </div>
         <section class="quit-hero" id="quit-hero" data-stage="0" aria-label="Your smoke-free journey">
           <div class="quit-orb-wrap">
@@ -224,7 +213,7 @@
         <section class="quit-start-panel content-card" id="quit-start-panel">
           <p class="card-eyebrow">SET YOUR OWN STARTING POINT</p>
           <h2>Begin your smoke-free clock</h2>
-          <p class="quit-panel-copy">Saved on this device and shared publicly when automatic sync is active. You can update your plan anytime.</p>
+          <p class="quit-panel-copy">Your quit plan is public when automatic sync is active.</p>
           <form id="quit-setup-form">
             <label class="field-label" for="quit-start-time">When did you stop?</label>
             <input id="quit-start-time" type="datetime-local" required>
@@ -277,12 +266,12 @@
           </section>
           <p class="quit-estimate-note" id="quit-estimate-note">*Estimates use the daily amount and pack price you entered. They are approximate.</p>
           <section class="craving-card">
-            <div><p class="quit-kicker">A CRAVING IS A MOMENT, NOT A COMMAND</p><h2>Give the urge a little space.</h2><p>Try a short breathing pause, change your surroundings, or reach out to someone you trust.</p></div>
+            <div><p class="quit-kicker">A CRAVING IS A MOMENT, NOT A COMMAND</p><h2>Give the urge a little space.</h2></div>
             <button class="craving-button" id="craving-button" type="button">Ride it out · 2 min <span aria-hidden="true">↗</span></button>
             <div class="craving-timer" id="craving-timer" hidden><strong id="craving-countdown">02:00</strong><span>Easy breath in. Slow breath out.</span><button type="button" id="craving-done">Finish pause</button></div>
           </section>
           <section class="quit-slip-card">
-            <div><h2>If you smoked, you can start again.</h2><p>A slip doesn't cancel your effort. Your best run and milestones stay with you.</p></div>
+            <div><h2>If you smoked, you can start again.</h2></div>
             <button id="log-slip-button" type="button">Log a slip</button>
           </section>
           <details class="quit-edit-details" id="quit-edit-details">
@@ -304,7 +293,6 @@
             <div id="quit-history-list"></div>
           </section>
         </div>
-        <p class="quit-disclaimer">This tracker offers encouragement, not medical advice. A health professional or local stop-smoking service can help you choose support that fits you.</p>
       </section>
 
       <nav class="bottom-nav" aria-label="Main navigation">
@@ -344,7 +332,6 @@
           <span class="field-label">Pick an icon</span>
           <div id="emoji-options" class="emoji-options"></div>
         </div>
-        <p class="form-note" id="task-form-note">You can add up to 25 tasks to your daily routine.</p>
         <div class="dialog-actions">
           <button class="delete-button" id="delete-task-button" type="button" hidden>Delete task</button>
           <span class="action-spacer"></span>
