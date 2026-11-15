@@ -21,7 +21,7 @@
         <button class="icon-button install-button" id="install-button" type="button" aria-label="Install app" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4h14v-4"/></svg>
         </button>
-        <button class="backup-button" id="backup-nav-button" type="button">Backup</button>
+        <button class="backup-button" id="backup-nav-button" type="button" aria-label="Data and backup">Data</button>
       </header>
       <p class="auto-sync-status" id="auto-sync-status" role="status" aria-live="polite" hidden></p>
 
@@ -232,7 +232,7 @@
               <div><label class="field-label" for="cigarettes-per-day">Cigarettes per day (optional)</label><input id="cigarettes-per-day" type="number" min="1" max="100" inputmode="numeric" placeholder="e.g. 10"></div>
               <div><label class="field-label" for="pack-price">Pack price (optional)</label><input id="pack-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 12"></div>
             </div>
-            <label class="field-label" for="cigarettes-per-pack">Cigarettes per pack</label>
+            <label class="field-label" for="cigarettes-per-pack">Cigarettes per pack (optional)</label>
             <input id="cigarettes-per-pack" type="number" min="1" max="100" value="20" inputmode="numeric">
             <button class="quit-primary-button" type="submit">Start my next chapter <span aria-hidden="true">→</span></button>
           </form>

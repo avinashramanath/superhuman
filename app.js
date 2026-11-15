@@ -626,7 +626,7 @@
         return `<article class="task-wrap" data-id="${escapeHtml(task.id)}">
           <div class="swipe-complete"><span>✓</span> Done</div>
           <div class="task-card${isDone ? " is-done" : ""}" data-index="${index}">
-            <button class="task-check${isDone ? " is-checked" : ""}" type="button" data-action="toggle" aria-label="${isDone ? "Mark incomplete" : "Complete"} ${escapeHtml(task.name)}">${isDone ? "✓" : ""}</button>
+            <button class="task-check${isDone ? " is-checked" : ""}" type="button" data-action="toggle" aria-pressed="${isDone}" aria-label="${isDone ? "Mark incomplete" : "Complete"} ${escapeHtml(task.name)}">${isDone ? "✓" : ""}</button>
             <div class="task-copy" role="button" tabindex="0" data-action="edit" aria-label="Edit ${escapeHtml(task.name)}">
               <span class="task-name">${escapeHtml(task.name)}</span><span class="task-detail">${isDone ? "Done for today" : "Tap to edit"}</span>
             </div>
@@ -1383,6 +1383,10 @@
       setSyncStatus(result.deleted ? "The encrypted cloud backup was deleted. Data on this device was not changed." : "No cloud backup was found for this sync code.");
     });
   });
+  for (const id of ["quit-start-time", "edit-quit-start-time"]) {
+    $(id).addEventListener("input", event => event.currentTarget.setCustomValidity(""));
+  }
+
   $("quit-setup-form").addEventListener("submit", event => {
     event.preventDefault();
     const settings = readSmokingSettings();
@@ -1448,6 +1452,7 @@
   $("quit-edit-details").addEventListener("toggle", () => {
     if (!$("quit-edit-details").open || !$("quit-edit-form").dataset.initialized) return;
     $("edit-quit-start-time").value = toLocalDateTimeValue(state.smoking.startedAt);
+    $("edit-quit-start-time").setCustomValidity("");
     $("edit-cigarettes-per-day").value = state.smoking.cigarettesPerDay || "";
     $("edit-pack-price").value = state.smoking.packPrice || "";
     $("edit-cigarettes-per-pack").value = state.smoking.cigarettesPerPack;
