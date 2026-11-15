@@ -168,6 +168,20 @@ test("an edit made while a write is in flight stays queued and reaches the cloud
   assert.deepEqual(first.meta.pending, {});
 });
 
+test("sync reports uploading while pending changes are written", async () => {
+  const server = cloud();
+  const statuses = [];
+  const seed = initialState();
+  const metadata = core.createMetadata("a", false, core.recordsFromState(seed));
+  const engine = create({
+    state: seed, metadata, transport: server, now: () => 100,
+    persist() {}, async createRecoveryBackup() {}, validateState: value => value,
+    onState() {}, onPending() {}, onStatus(message) { statuses.push(message); }, onError(error) { throw error; }
+  });
+  await engine.run();
+  assert.deepEqual(statuses, ["Syncing…", "Uploading…", "All changes synced."]);
+});
+
 test("invalid remote data does not acknowledge or replace pending local edits", async () => {
   const server = cloud();
   const first = device(server, "a", initialState());

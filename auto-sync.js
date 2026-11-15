@@ -112,6 +112,7 @@
       if (!await bootstrap(remote)) return;
       options.validateState(core.stateFromRecords(core.mergePending(remote, metadata.pending)));
       if (observedTime > metadata.clock) persist(current, { ...metadata, clock: observedTime });
+      if (Object.keys(metadata.pending).length) options.onStatus("Uploading…", false);
       for (const [recordKey, pending] of Object.entries(metadata.pending)) {
         const saved = await core.pushRecord(pending, remote[recordKey], options.transport.writeRecord);
         remote[recordKey] = saved;
@@ -133,7 +134,6 @@
         rerun = true;
         return;
       }
-      if (current.reordering) nextState.reordering = current.reordering;
       persist(nextState, { ...metadata, clock: Math.max(metadata.clock, latestTime) });
       options.onState(structuredClone(nextState));
       options.onStatus(Object.keys(metadata.pending).length ? "Changes are waiting to sync." : "All changes synced.", false);

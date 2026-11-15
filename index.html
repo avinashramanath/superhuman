@@ -21,9 +21,8 @@
         <button class="icon-button install-button" id="install-button" type="button" aria-label="Install app" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4h14v-4"/></svg>
         </button>
-        <button class="backup-button" id="backup-nav-button" type="button" aria-label="Data and backup">Data</button>
+        <span class="auto-sync-status" id="auto-sync-status" role="status" aria-live="polite" data-state="syncing"><span class="sync-indicator" aria-hidden="true"></span><span id="auto-sync-label">Syncing</span></span>
       </header>
-      <p class="auto-sync-status" id="auto-sync-status" role="status" aria-live="polite" hidden></p>
 
       <section class="view is-active" id="today-view" aria-labelledby="today-title">
         <div class="section-heading">
@@ -31,7 +30,6 @@
             <h2>Your routine</h2>
             <p id="routine-caption">A rhythm that feels like you.</p>
           </div>
-          <button class="text-button" id="manage-button" type="button">Edit routine</button>
         </div>
 
         <div id="routine-list" class="routine-list" aria-live="polite"></div>
@@ -55,7 +53,7 @@
         <div class="welcome-row">
           <div>
             <p class="eyebrow" id="today-date"></p>
-            <h1 id="today-title">Build your<br><span>own momentum.</span></h1>
+            <h1 id="today-title">Your momentum.</h1>
           </div>
           <div class="sun-mark" aria-hidden="true">✳</div>
         </div>
@@ -64,7 +62,7 @@
       <section class="view" id="better-view" aria-labelledby="better-title" hidden>
         <div class="page-intro">
           <p class="eyebrow">YOU, IN THE MAKING</p>
-          <h1 id="better-title">Better, by<br><span class="neon-title">your own design.</span></h1>
+          <h1 id="better-title">Your progress.</h1>
         </div>
         <section class="evolution-card" id="evolution-card" data-stage="0" aria-label="Your evolving progress being">
           <div class="evolution-copy">
@@ -102,6 +100,14 @@
           </svg>
         </section>
         <section class="better-stats" id="better-stats" aria-label="Your growth so far"></section>
+        <section class="content-card">
+          <div class="section-heading compact-heading"><div><h2>Recent days</h2><p>Your last 14 days</p></div></div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+        <section class="content-card milestone-card">
+          <span class="milestone-icon" aria-hidden="true">✦</span>
+          <div><p class="card-eyebrow">NEXT RECORD</p><h2 id="next-milestone-title">Your first full day</h2><p id="next-milestone-copy">Complete your routine to begin your streak.</p></div>
+        </section>
       </section>
 
       <section class="view journal-view" id="journal-view" aria-labelledby="journal-title" hidden>
@@ -146,26 +152,10 @@
         <p class="journal-privacy-note"><span aria-hidden="true">⌑</span> Automatic sync is public: anyone can read, change, or delete synced entries.</p>
       </section>
 
-      <section class="view" id="history-view" aria-labelledby="history-title" hidden>
-        <div class="page-intro">
-          <p class="eyebrow">LOOK HOW FAR YOU'VE COME</p>
-          <h1 id="history-title">Your history</h1>
-        </div>
-        <section class="stat-grid" id="history-stats"></section>
-        <section class="content-card">
-          <div class="section-heading compact-heading"><div><h2>Recent days</h2><p>Your last 14 days</p></div></div>
-          <div class="history-list" id="history-list"></div>
-        </section>
-        <section class="content-card milestone-card">
-          <span class="milestone-icon" aria-hidden="true">✦</span>
-          <div><p class="card-eyebrow">NEXT RECORD</p><h2 id="next-milestone-title">Your first full day</h2><p id="next-milestone-copy">Complete your routine to begin your streak.</p></div>
-        </section>
-      </section>
-
       <section class="view" id="badges-view" aria-labelledby="badges-title" hidden>
         <div class="page-intro">
           <p class="eyebrow">PROOF OF YOUR PROGRESS</p>
-          <h1 id="badges-title">Earn your<br>next signal.</h1>
+          <h1 id="badges-title">Your badges.</h1>
         </div>
         <div class="badge-summary" id="badge-summary"></div>
         <div class="badge-grid" id="badge-grid"></div>
@@ -174,7 +164,7 @@
       <section class="view quit-view" id="quit-view" aria-labelledby="quit-title" hidden>
         <div class="page-intro">
           <p class="eyebrow">A DIFFERENT KIND OF STRENGTH</p>
-          <h1 id="quit-title">Conquer<br><span class="quit-title-accent">smoking.</span></h1>
+          <h1 id="quit-title">Conquer smoking.</h1>
         </div>
         <section class="quit-hero" id="quit-hero" data-stage="0" aria-label="Your smoke-free journey">
           <div class="quit-orb-wrap">
@@ -229,16 +219,17 @@
 
         <div id="quit-active-panel" hidden>
           <section class="quit-clock-card">
+            <button class="icon-button quit-settings-button" id="quit-settings-button" type="button" aria-label="Quit settings" aria-expanded="false" aria-controls="quit-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42m0-14.14-1.42 1.42M6.35 17.65l-1.42 1.42"/></svg></button>
             <p class="quit-kicker">TIME SINCE YOUR LAST CIGARETTE</p>
-            <div class="quit-clock" id="quit-clock" aria-live="polite">
+            <div class="quit-clock" id="quit-clock">
               <div><strong id="quit-days">0</strong><span>days</span></div><i>:</i>
               <div><strong id="quit-hours">00</strong><span>hours</span></div><i>:</i>
-              <div><strong id="quit-minutes">00</strong><span>minutes</span></div>
+              <div><strong id="quit-minutes">00</strong><span>minutes</span></div><i>:</i>
+              <div><strong id="quit-seconds">00</strong><span>seconds</span></div>
             </div>
             <p class="quit-clock-caption" id="quit-clock-caption">Your time is yours. One moment at a time.</p>
             <div class="quit-stats">
               <div><strong id="quit-best">0h</strong><span>best smoke-free run</span></div>
-              <div><strong id="quit-lapses">0</strong><span>slips logged</span></div>
               <div id="quit-saved-stat" hidden><strong id="quit-saved">0</strong><span>cigarettes not smoked this run*</span></div>
               <div id="quit-saved-money-stat" hidden><strong id="quit-saved-money">0</strong><span>estimated savings*</span></div>
             </div>
@@ -270,10 +261,8 @@
             <button class="craving-button" id="craving-button" type="button">Ride it out · 2 min <span aria-hidden="true">↗</span></button>
             <div class="craving-timer" id="craving-timer" hidden><strong id="craving-countdown">02:00</strong><span>Easy breath in. Slow breath out.</span><button type="button" id="craving-done">Finish pause</button></div>
           </section>
-          <section class="quit-slip-card">
-            <div><h2>If you smoked, you can start again.</h2></div>
-            <button id="log-slip-button" type="button">Log a slip</button>
-          </section>
+          <section class="quit-settings" id="quit-settings" hidden>
+          <button class="quit-secondary-button" id="log-slip-button" type="button">Log a slip</button>
           <details class="quit-edit-details" id="quit-edit-details">
             <summary>Edit your quit plan</summary>
             <form id="quit-edit-form">
@@ -288,9 +277,6 @@
               <button class="quit-secondary-button" type="submit">Save plan</button>
             </form>
           </details>
-          <section class="quit-history content-card">
-            <div class="section-heading compact-heading"><div><h2>Every restart counts</h2><p>Your check-in history</p></div></div>
-            <div id="quit-history-list"></div>
           </section>
         </div>
       </section>
@@ -301,9 +287,6 @@
         </button>
         <button class="nav-item" type="button" data-view="better">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16m0-8 7-4M12 12l-7 4"/></svg><span>Better me</span>
-        </button>
-        <button class="nav-item" type="button" data-view="history">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>History</span>
         </button>
         <button class="nav-item" type="button" data-view="badges">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg><span>Badges</span>
@@ -357,46 +340,6 @@
       </div>
       <p>This entry will be removed from this device and synced to the cloud. This cannot be undone.</p>
       <div class="dialog-actions"><button class="secondary-button" id="cancel-journal-delete" type="button">Keep it</button><button class="quit-primary-button" id="confirm-journal-delete" type="button">Delete entry</button></div>
-    </dialog>
-
-    <dialog class="sync-dialog" id="sync-dialog" aria-labelledby="sync-title">
-      <div class="dialog-heading">
-        <div><p class="eyebrow">YOUR DATA</p><h2 id="sync-title">Backup & recovery</h2></div>
-        <button class="icon-button sync-close-button" id="close-sync-dialog" type="button" aria-label="Close">×</button>
-      </div>
-      <p class="sync-intro">Changes sync automatically across devices. Synced data, including journal entries, is public: anyone can read, change, or delete it.</p>
-      <button class="sync-secondary-button" id="restore-local-recovery" type="button">Restore pre-sync local copy</button>
-      <p class="sync-status" id="sync-status" role="status" aria-live="polite"></p>
-      <details class="legacy-sync">
-        <summary>Independent file backup</summary>
-        <p class="sync-footnote">Export an unencrypted file containing your data. Keep it somewhere safe; anyone with the file can read it.</p>
-        <div class="sync-actions">
-          <button class="sync-secondary-button" id="export-file-backup" type="button">Export backup file</button>
-          <button class="sync-secondary-button" id="import-file-backup" type="button">Restore backup file</button>
-        </div>
-        <input id="backup-file" class="visually-hidden" type="file" accept=".json,application/json">
-        <p class="sync-status" id="file-backup-status" role="status" aria-live="polite"></p>
-      </details>
-      <details class="legacy-sync">
-        <summary>Manage encrypted backup</summary>
-        <p class="sync-footnote">Encrypted cloud backup is unavailable until its backend is configured. Use an independent file backup instead.</p>
-        <fieldset class="encrypted-backup-controls" disabled>
-        <label class="field-label" for="sync-code">Private sync code</label>
-        <div class="sync-code-row">
-          <input id="sync-code" type="text" maxlength="43" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Generate a code or enter one from another device">
-          <button class="sync-secondary-button" id="generate-sync-code" type="button">Generate</button>
-        </div>
-        <div class="sync-code-actions">
-          <button class="sync-text-button" id="copy-sync-code" type="button" disabled>Copy sync code</button>
-          <span>Keep it private. Anyone with this code can access that backup.</span>
-        </div>
-        <div class="sync-actions">
-          <button class="sync-primary-button" id="upload-sync" type="button" disabled>Upload this device</button>
-          <button class="sync-secondary-button" id="restore-sync" type="button" disabled>Restore from cloud</button>
-          <button class="sync-danger-button" id="delete-sync" type="button" disabled>Delete cloud backup</button>
-        </div>
-        </fieldset>
-      </details>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite">

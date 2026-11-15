@@ -5,8 +5,6 @@
   const SUPABASE_URL = "https://txvlnkclbbyhsymarzqn.supabase.co";
   const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uVxOvQrzACpa8Ug9Sm4n3w_K5llUi7Y";
   const RECOVERY_KEY = "superhuman-pre-sync-recovery-v1";
-  const SYNC_ENDPOINT = `${SUPABASE_URL}/functions/v1/superhuman-sync`;
-  const SYNC_MAX_PLAINTEXT_BYTES = 2.75 * 1024 * 1024;
   const MAX_TASKS = 25;
   const ICONS = [
     "💧", "🫧", "🌊", "🧘", "🪷", "🧠", "📖", "✍️", "🎧", "🎨",
@@ -119,6 +117,8 @@
   let journalEditingId = null;
   let journalSelectedMood = "steady";
   let journalDeleteId = null;
+  let taskDrag = null;
+  let lastSmokeMinute = null;
   const JOURNAL_MOODS = {
     steady: ["◉", "Steady"],
     hopeful: ["✦", "Hopeful"],
@@ -205,25 +205,6 @@
     localStorage.setItem(RECOVERY_KEY, JSON.stringify(state));
   }
 
-  async function restoreLocalRecovery() {
-    const backup = localStorage.getItem(RECOVERY_KEY);
-    if (!backup) throw new Error("No pre-sync recovery copy exists on this device.");
-    let restored;
-    try {
-      restored = validateSyncedState(JSON.parse(backup));
-    } catch (error) {
-      console.error("Could not read the local recovery copy.", error);
-      throw new Error("The pre-sync recovery copy is invalid; nothing was restored.");
-    }
-    const previous = state;
-    state = restored;
-    if (!save()) {
-      state = previous;
-      throw new Error("The recovery copy could not be saved on this device.");
-    }
-    render();
-  }
-
   function validSyncMetadata(value) {
     if (!isRecord(value) || value.version !== 1
       || typeof value.writer !== "string"
@@ -240,9 +221,11 @@
   }
 
   function setAutoSyncStatus(message, isError = false) {
-    $("auto-sync-status").textContent = message;
-    $("auto-sync-status").dataset.error = String(isError);
-    $("auto-sync-status").hidden = !isError;
+    const indicator = $("auto-sync-status");
+    const status = isError ? "error" : message.startsWith("All changes") ? "synced" : message.startsWith("Uploading") ? "uploading" : message.startsWith("Changes") ? "pending" : "syncing";
+    indicator.dataset.state = status;
+    indicator.title = message;
+    $("auto-sync-label").textContent = isError ? message : { synced: "Synced", uploading: "Uploading", pending: "Waiting", syncing: "Syncing" }[status];
   }
 
   function scheduleAutoSync(delay = 1500) {
@@ -288,139 +271,6 @@
     }
   }
 
-  function bytesToBase64(bytes) {
-    let binary = "";
-    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-    }
-    return btoa(binary);
-  }
-
-  function base64ToBytes(value) {
-    if (typeof value !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
-      throw new Error("The encrypted backup contains invalid data.");
-    }
-    const padded = value + "=".repeat((4 - value.length % 4) % 4);
-    const binary = atob(padded);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-    return bytes;
-  }
-
-  function setSyncStatus(message, isError = false) {
-    $("sync-status").textContent = message;
-    $("sync-status").dataset.error = String(isError);
-  }
-
-  function syncCodeIsValid(code = $("sync-code").value.trim()) {
-    return /^[A-Za-z0-9_-]{43}$/.test(code);
-  }
-
-  function updateSyncControls() {
-    const busy = $("sync-dialog").dataset.busy === "true";
-    const valid = syncCodeIsValid();
-    $("copy-sync-code").disabled = !valid || busy;
-    $("upload-sync").disabled = !valid || busy;
-    $("restore-sync").disabled = !valid || busy;
-    $("delete-sync").disabled = !valid || busy;
-    $("generate-sync-code").disabled = busy;
-  }
-
-  async function deriveSyncCredentials() {
-    if (!syncCodeIsValid()) throw new Error("Enter a valid 43-character sync code, or generate one here.");
-    if (!crypto?.subtle) throw new Error("This browser does not support secure encrypted sync.");
-
-    const code = $("sync-code").value.trim();
-    const raw = base64ToBytes(code.replace(/-/g, "+").replace(/_/g, "/"));
-    if (raw.length !== 32) throw new Error("The sync code is invalid.");
-    const material = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveBits"]);
-    raw.fill(0);
-    const derived = new Uint8Array(await crypto.subtle.deriveBits({
-      name: "HKDF",
-      hash: "SHA-256",
-      salt: new TextEncoder().encode("superhuman-sync-v1"),
-      info: new TextEncoder().encode("Superhuman private sync")
-    }, material, 512));
-    const encryptionKey = await crypto.subtle.importKey(
-      "raw",
-      derived.slice(0, 32),
-      { name: "AES-GCM" },
-      false,
-      ["encrypt", "decrypt"]
-    );
-    const identifierDigest = await crypto.subtle.digest("SHA-256", derived.slice(32));
-    const syncId = [...new Uint8Array(identifierDigest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
-    derived.fill(0);
-    return { encryptionKey, syncId };
-  }
-
-  async function requestSync(action, credentials, encryptedBlob) {
-    const body = { action, syncId: credentials.syncId };
-    if (encryptedBlob) body.encryptedBlob = encryptedBlob;
-    const response = await fetch(SYNC_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify(body)
-    });
-    let result;
-    try {
-      result = await response.json();
-    } catch (error) {
-      console.error("The private sync service returned an unreadable response.", error);
-      throw new Error("The private sync service returned an unreadable response. Try again.");
-    }
-    if (!response.ok) {
-      throw new Error(typeof result.error === "string" ? result.error : `Sync failed (${response.status}). Try again.`);
-    }
-    return result;
-  }
-
-  async function createBackupDocument() {
-    return { version: 2, state: structuredClone(state) };
-  }
-
-  async function createEncryptedBackup(encryptionKey) {
-    const plaintext = new TextEncoder().encode(JSON.stringify(await createBackupDocument()));
-    if (plaintext.byteLength > SYNC_MAX_PLAINTEXT_BYTES) {
-      throw new Error("This backup is too large to sync in one encrypted transfer. Use the independent file backup instead.");
-    }
-
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, encryptionKey, plaintext);
-    return { v: 1, iv: bytesToBase64(iv), ciphertext: bytesToBase64(new Uint8Array(ciphertext)) };
-  }
-
-  async function decryptBackup(encryptedBlob, encryptionKey) {
-    if (!encryptedBlob || encryptedBlob.v !== 1 || typeof encryptedBlob.iv !== "string" || typeof encryptedBlob.ciphertext !== "string") {
-      throw new Error("The cloud backup has an unsupported format.");
-    }
-    const iv = base64ToBytes(encryptedBlob.iv);
-    const ciphertext = base64ToBytes(encryptedBlob.ciphertext);
-    if (iv.length !== 12 || ciphertext.length > SYNC_MAX_PLAINTEXT_BYTES + 16) {
-      throw new Error("The cloud backup is invalid or too large.");
-    }
-
-    let plaintext;
-    try {
-      plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, encryptionKey, ciphertext);
-    } catch (error) {
-      console.error("The cloud backup could not be decrypted with this sync code.", error);
-      throw new Error("This backup could not be decrypted. Check that you entered the original sync code.");
-    }
-    let document;
-    try {
-      document = JSON.parse(new TextDecoder().decode(plaintext));
-    } catch (error) {
-      console.error("The decrypted sync backup is not valid JSON.", error);
-      throw new Error("The decrypted backup is damaged and was not restored.");
-    }
-    if (!isRecord(document) || ![1, 2].includes(document.version) || !isRecord(document.state)) {
-      throw new Error("The cloud backup has an unsupported format.");
-    }
-    return document;
-  }
-
   function isRecord(value) {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   }
@@ -429,19 +279,19 @@
     if (!isRecord(value) || !Array.isArray(value.tasks) || value.tasks.length > MAX_TASKS
       || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal)
 ) {
-      throw new Error("The backup data is incomplete or invalid; nothing was restored.");
+      throw new Error("Synced data is incomplete or invalid; local data was not changed.");
     }
     if (value.tasks.some(task => !isRecord(task) || typeof task.id !== "string" || typeof task.name !== "string")) {
-      throw new Error("The backup contains an invalid routine task; nothing was restored.");
+      throw new Error("Synced data contains an invalid task; local data was not changed.");
     }
     for (const [date, completed] of Object.entries(value.completions)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(completed) || completed.some(id => typeof id !== "string")) {
-        throw new Error("The backup contains invalid completion history; nothing was restored.");
+        throw new Error("Synced completion history is invalid; local data was not changed.");
       }
     }
     for (const [date, routine] of Object.entries(value.routines)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(routine) || routine.some(id => typeof id !== "string")) {
-        throw new Error("The backup contains invalid routine history; nothing was restored.");
+        throw new Error("Synced routine history is invalid; local data was not changed.");
       }
     }
     if (value.journal.some(entry => !isRecord(entry)
@@ -449,7 +299,7 @@
       || typeof entry.createdAt !== "string"
       || !Number.isFinite(Date.parse(entry.createdAt))
       || typeof entry.text !== "string")) {
-      throw new Error("The backup contains an invalid journal entry; nothing was restored.");
+      throw new Error("Synced data contains an invalid journal entry; local data was not changed.");
     }
     return {
       tasks: value.tasks.map(task => ({ ...task })).slice(0, MAX_TASKS),
@@ -460,39 +310,6 @@
       journal: value.journal.map(({ photoKey, ...entry }) => entry),
       name: typeof value.name === "string" ? value.name : "Alex"
     };
-  }
-
-  async function restoreEncryptedBackup(document) {
-    const nextState = validateSyncedState(document.state);
-    const previousState = state;
-    state = nextState;
-    if (!save()) {
-      state = previousState;
-      throw new Error("The backup could not be saved on this device. Free some browser storage and try again.");
-    }
-    render();
-  }
-
-  async function runSyncOperation(operation) {
-    if ($("sync-dialog").dataset.busy === "true") return;
-    $("sync-dialog").dataset.busy = "true";
-    updateSyncControls();
-    try {
-      await operation();
-    } catch (error) {
-      console.error("Private sync failed.", error);
-      setSyncStatus(error instanceof Error ? error.message : "Private sync failed. Try again.", true);
-    } finally {
-      $("sync-dialog").dataset.busy = "false";
-      updateSyncControls();
-    }
-  }
-
-  function formattedSyncTime(value) {
-    const date = new Date(value);
-    return Number.isFinite(date.getTime())
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date)
-      : "just now";
   }
 
   function completionFor(dateKey) {
@@ -608,29 +425,26 @@
       list.innerHTML = '<div class="empty-state">Your routine is a blank page. Add one small thing you would like to do today.</div>';
       return;
     }
-    const groups = new Map();
+    const groups = [];
     for (const task of state.tasks) {
       const name = (task.group || "").trim() || "Daily flow";
-      if (!groups.has(name)) groups.set(name, []);
-      groups.get(name).push(task);
+      if (!groups.length || groups[groups.length - 1][0] !== name) groups.push([name, []]);
+      groups[groups.length - 1][1].push(task);
     }
-    list.innerHTML = [...groups.entries()].map(([group, tasks]) => {
+    list.innerHTML = groups.map(([group, tasks]) => {
       const groupDone = tasks.filter(task => completed.includes(task.id)).length;
       const groupPercent = Math.round(groupDone / tasks.length * 100);
       const groupTasks = tasks.map(task => {
-        const index = state.tasks.indexOf(task);
-        const siblings = tasks;
-        const siblingIndex = siblings.indexOf(task);
         const isDone = completed.includes(task.id);
         return `<article class="task-wrap" data-id="${escapeHtml(task.id)}">
           <div class="swipe-complete"><span>✓</span> Done</div>
-          <div class="task-card${isDone ? " is-done" : ""}" data-index="${index}">
+          <div class="task-card${isDone ? " is-done" : ""}">
             <button class="task-check${isDone ? " is-checked" : ""}" type="button" data-action="toggle" aria-pressed="${isDone}" aria-label="${isDone ? "Mark incomplete" : "Complete"} ${escapeHtml(task.name)}">${isDone ? "✓" : ""}</button>
             <div class="task-copy" role="button" tabindex="0" data-action="edit" aria-label="Edit ${escapeHtml(task.name)}">
               <span class="task-name">${escapeHtml(task.name)}</span>${isDone ? '<span class="task-detail">Done for today</span>' : ""}
             </div>
             <span class="task-icon" aria-hidden="true">${escapeHtml(task.icon || "✨")}</span>
-            ${state.reordering ? `<div class="task-actions"><button type="button" data-action="up" aria-label="Move up in ${escapeHtml(group)}" ${siblingIndex === 0 ? "disabled" : ""}>↑</button><button type="button" data-action="down" aria-label="Move down in ${escapeHtml(group)}" ${siblingIndex === siblings.length - 1 ? "disabled" : ""}>↓</button></div>` : ""}
+            <button class="task-drag-handle" type="button" data-action="reorder" aria-label="Reorder ${escapeHtml(task.name)}. Hold and drag, or use arrow keys." ${state.tasks.length < 2 ? "disabled" : ""}>⋮⋮</button>
           </div>
         </article>`;
       }).join("");
@@ -711,11 +525,6 @@
     const todayKey = localDateKey();
     const streak = streakAt(state);
     const best = bestStreak(state);
-    $("history-stats").innerHTML = `
-      <div class="stat-card"><strong>${streak}</strong><span>current run</span></div>
-      <div class="stat-card"><strong>${best}</strong><span>best run ✦</span></div>
-      <div class="stat-card"><strong>${fullDays(state)}</strong><span>full routine days</span></div>
-      <div class="stat-card"><strong>${totalCompletions(state)}</strong><span>tasks completed</span></div>`;
     const keys = Array.from({ length: 14 }, (_, offset) => {
       const date = new Date();
       date.setDate(date.getDate() - offset);
@@ -791,13 +600,15 @@
   function moveTask(id, direction) {
     const index = state.tasks.findIndex(task => task.id === id);
     if (index < 0) return;
-    const group = (state.tasks[index].group || "").trim();
-    const siblings = state.tasks.filter(task => (task.group || "").trim() === group);
-    const siblingIndex = siblings.findIndex(task => task.id === id);
-    const targetSibling = siblings[siblingIndex + direction];
-    if (!targetSibling) return;
-    const target = state.tasks.findIndex(task => task.id === targetSibling.id);
-    [state.tasks[index], state.tasks[target]] = [state.tasks[target], state.tasks[index]];
+    const target = state.tasks[index + direction];
+    if (target) reorderTask(id, target.id);
+  }
+
+  function reorderTask(id, targetId) {
+    const from = state.tasks.findIndex(item => item.id === id);
+    const to = state.tasks.findIndex(item => item.id === targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    state.tasks.splice(to, 0, state.tasks.splice(from, 1)[0]);
     save();
     render();
   }
@@ -909,15 +720,17 @@
       : "A warm geometric light, ready to grow with your smoke-free journey.";
   }
 
-  function updateSmokeClock() {
+  function updateSmokeClock(updateDetails = true) {
     if (!state.smoking.startedAt) return;
     const elapsed = currentSmokeRunMs(state);
     const minutes = Math.floor(elapsed / 60000);
+    if (updateDetails) lastSmokeMinute = minutes;
     $("quit-days").textContent = Math.floor(minutes / 1440);
     $("quit-hours").textContent = String(Math.floor(minutes % 1440 / 60)).padStart(2, "0");
     $("quit-minutes").textContent = String(minutes % 60).padStart(2, "0");
+    $("quit-seconds").textContent = String(Math.floor(elapsed / 1000) % 60).padStart(2, "0");
+    if (!updateDetails) return;
     $("quit-best").textContent = formatSmokeDuration(smokeBestRunMs(state));
-    $("quit-lapses").textContent = state.smoking.lapses.length;
     const origin = smokeTimerOrigin(state);
     $("quit-clock-caption").textContent = `Since ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(origin))}`;
     const estimatedCigarettes = state.smoking.cigarettesPerDay
@@ -949,12 +762,6 @@
       return;
     }
     updateSmokeClock();
-    $("quit-history-list").innerHTML = smoking.lapses.length
-      ? smoking.lapses.slice().reverse().map((timestamp, index) => {
-        const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
-        return `<div class="quit-history-row"><span><strong>Restart ${smoking.lapses.length - index}</strong><small>${when}</small></span><span class="restart-mark">↗</span></div>`;
-      }).join("")
-      : '<p class="quit-empty-history">No slips logged. Your history is yours to fill—without pressure.</p>';
     if (!$("quit-edit-form").dataset.initialized) {
       $("edit-quit-start-time").value = toLocalDateTimeValue(smoking.startedAt);
       $("edit-cigarettes-per-day").value = smoking.cigarettesPerDay || "";
@@ -1058,6 +865,14 @@
   });
 
   $("routine-list").addEventListener("keydown", event => {
+    if (event.target.matches('[data-action="reorder"]') && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      const id = event.target.closest(".task-wrap").dataset.id;
+      moveTask(id, event.key === "ArrowUp" ? -1 : 1);
+      const handle = [...$("routine-list").querySelectorAll(".task-wrap")].find(card => card.dataset.id === id)?.querySelector(".task-drag-handle");
+      if (handle) handle.focus();
+      return;
+    }
     if ((event.key === "Enter" || event.key === " ") && event.target.matches('[data-action="edit"]')) {
       event.preventDefault();
       const task = state.tasks.find(item => item.id === event.target.closest(".task-wrap")?.dataset.id);
@@ -1067,7 +882,7 @@
 
   $("routine-list").addEventListener("touchstart", event => {
     const card = event.target.closest(".task-card");
-    if (!card || event.target.closest(".task-actions, .task-check")) return;
+    if (!card || event.target.closest(".task-drag-handle, .task-check")) return;
     const touch = event.changedTouches[0];
     card.dataset.touchX = touch.clientX;
     card.dataset.touchY = touch.clientY;
@@ -1097,12 +912,50 @@
     delete card.dataset.touchY;
   }, { passive: true });
 
-  $("add-task-button").addEventListener("click", () => openTaskDialog());
-  $("manage-button").addEventListener("click", () => {
-    state.reordering = !state.reordering;
-    $("manage-button").textContent = state.reordering ? "Done" : "Edit routine";
-    renderRoutine();
+  $("routine-list").addEventListener("pointerdown", event => {
+    const handle = event.target.closest(".task-drag-handle");
+    if (!handle || handle.disabled || !event.isPrimary || event.button !== 0) return;
+    const card = handle.closest(".task-wrap");
+    const drag = { handle, card, pointerId: event.pointerId, x: event.clientX, y: event.clientY, active: false, target: null };
+    taskDrag = drag;
+    handle.setPointerCapture(event.pointerId);
+    drag.timer = setTimeout(() => {
+      if (taskDrag !== drag) return;
+      drag.active = true;
+      card.classList.add("is-reordering");
+    }, 400);
   });
+  $("routine-list").addEventListener("pointermove", event => {
+    const drag = taskDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 10) clearTimeout(drag.timer);
+      return;
+    }
+    event.preventDefault();
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".task-wrap");
+    const valid = target && target !== drag.card ? target : null;
+    if (drag.target !== valid) {
+      drag.target?.classList.remove("is-drop-target");
+      drag.target = valid;
+      drag.target?.classList.add("is-drop-target");
+    }
+    if (event.clientY < 70) window.scrollBy(0, -12);
+    else if (event.clientY > window.innerHeight - 90) window.scrollBy(0, 12);
+  });
+  function finishTaskDrag(event, cancelled = false) {
+    const drag = taskDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    clearTimeout(drag.timer);
+    drag.card.classList.remove("is-reordering");
+    drag.target?.classList.remove("is-drop-target");
+    taskDrag = null;
+    if (!cancelled && drag.active && drag.target) reorderTask(drag.card.dataset.id, drag.target.dataset.id);
+  }
+  $("routine-list").addEventListener("pointerup", event => finishTaskDrag(event));
+  $("routine-list").addEventListener("pointercancel", event => finishTaskDrag(event, true));
+
+  $("add-task-button").addEventListener("click", () => openTaskDialog());
   $("task-form").addEventListener("submit", event => {
     event.preventDefault();
     const name = $("task-name").value.trim();
@@ -1247,124 +1100,6 @@
       button.disabled = false;
     }
   });
-  $("backup-nav-button").addEventListener("click", () => {
-    updateSyncControls();
-    $("sync-dialog").showModal();
-  });
-  $("close-sync-dialog").addEventListener("click", () => $("sync-dialog").close());
-  $("export-file-backup").addEventListener("click", async () => {
-    const button = $("export-file-backup");
-    const status = $("file-backup-status");
-    button.disabled = true;
-    try {
-      status.textContent = "Preparing your unencrypted backup file…";
-      const backup = await createBackupDocument();
-      const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: "application/json" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `superhuman-backup-${localDateKey()}.json`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-      status.textContent = "Backup download started. Store the file somewhere safe.";
-    } catch (error) {
-      console.error("Could not export the backup file.", error);
-      status.textContent = error instanceof Error ? error.message : "Could not export the backup file.";
-    } finally {
-      button.disabled = false;
-    }
-  });
-  $("import-file-backup").addEventListener("click", () => $("backup-file").click());
-  $("backup-file").addEventListener("change", async () => {
-    const input = $("backup-file");
-    const file = input.files[0];
-    if (!file) return;
-    if (!window.confirm("Restore this backup file? It replaces this device's current data and will sync the restored changes.")) {
-      input.value = "";
-      return;
-    }
-    const button = $("import-file-backup");
-    const status = $("file-backup-status");
-    button.disabled = true;
-    try {
-      status.textContent = "Reading your backup file…";
-      const backup = JSON.parse(await file.text());
-      if (!isRecord(backup) || ![1, 2].includes(backup.version) || !isRecord(backup.state)) {
-        throw new Error("This file is not a supported Superhuman backup.");
-      }
-      await restoreEncryptedBackup(backup);
-      status.textContent = "Backup file restored on this device.";
-    } catch (error) {
-      console.error("Could not restore the backup file.", error);
-      status.textContent = error instanceof Error ? error.message : "Could not restore the backup file.";
-    } finally {
-      input.value = "";
-      button.disabled = false;
-    }
-  });
-  $("restore-local-recovery").addEventListener("click", async () => {
-    if (!window.confirm("Restore the local pre-sync copy? This replaces this device's current data and will sync the restored changes.")) return;
-    const button = $("restore-local-recovery");
-    button.disabled = true;
-    try {
-      await restoreLocalRecovery();
-      setSyncStatus("The pre-sync copy was restored on this device.");
-    } catch (error) {
-      console.error("Could not restore the local recovery copy.", error);
-      setSyncStatus(error instanceof Error ? error.message : "Could not restore the local recovery copy.", true);
-    } finally {
-      button.disabled = false;
-    }
-  });
-              $("sync-code").addEventListener("input", updateSyncControls);
-  $("generate-sync-code").addEventListener("click", () => {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    $("sync-code").value = bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-    bytes.fill(0);
-    updateSyncControls();
-    setSyncStatus("A new private code was generated. Save it before leaving this page; it will not be stored by the app.");
-  });
-  $("copy-sync-code").addEventListener("click", async () => {
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
-      await navigator.clipboard.writeText($("sync-code").value.trim());
-      setSyncStatus("Sync code copied. Keep it private and store it somewhere safe.");
-    } catch (error) {
-      console.error("Could not copy the private sync code.", error);
-      setSyncStatus(error instanceof Error ? error.message : "Could not copy the sync code.", true);
-    }
-  });
-  $("upload-sync").addEventListener("click", () => {
-    if (!window.confirm("Upload this device's routine, quit history, and journal? This replaces the cloud backup for this sync code; it does not merge devices.")) return;
-    runSyncOperation(async () => {
-      setSyncStatus("Encrypting your data on this device…");
-      const credentials = await deriveSyncCredentials();
-      const encryptedBlob = await createEncryptedBackup(credentials.encryptionKey);
-      const result = await requestSync("put", credentials, encryptedBlob);
-      setSyncStatus(`Encrypted backup uploaded ${formattedSyncTime(result.updatedAt)}.`);
-    });
-  });
-  $("restore-sync").addEventListener("click", () => {
-    if (!window.confirm("Restore the cloud backup to this device? This replaces this device's routine, quit history, and journal.")) return;
-    runSyncOperation(async () => {
-      setSyncStatus("Checking for an encrypted cloud backup…");
-      const credentials = await deriveSyncCredentials();
-      const result = await requestSync("get", credentials);
-      if (!result.exists) throw new Error("No cloud backup was found for this sync code.");
-      const document = await decryptBackup(result.encrypted_blob, credentials.encryptionKey);
-      await restoreEncryptedBackup(document);
-      setSyncStatus(`Cloud backup restored from ${formattedSyncTime(result.updated_at)}. Local data was kept intact until the restore completed.`);
-    });
-  });
-  $("delete-sync").addEventListener("click", () => {
-    if (!window.confirm("Permanently delete the encrypted cloud backup for this sync code? Data saved on this device will remain unchanged.")) return;
-    runSyncOperation(async () => {
-      const credentials = await deriveSyncCredentials();
-      const result = await requestSync("delete", credentials);
-      setSyncStatus(result.deleted ? "The encrypted cloud backup was deleted. Data on this device was not changed." : "No cloud backup was found for this sync code.");
-    });
-  });
   for (const id of ["quit-start-time", "edit-quit-start-time"]) {
     $(id).addEventListener("input", event => event.currentTarget.setCustomValidity(""));
   }
@@ -1412,6 +1147,12 @@
     render();
   });
   $("log-slip-button").addEventListener("click", () => $("lapse-dialog").showModal());
+  $("quit-settings-button").addEventListener("click", () => {
+    const settings = $("quit-settings");
+    settings.hidden = !settings.hidden;
+    $("quit-settings-button").setAttribute("aria-expanded", String(!settings.hidden));
+    if (!settings.hidden) settings.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
   $("close-lapse-dialog").addEventListener("click", () => $("lapse-dialog").close());
   $("cancel-lapse").addEventListener("click", () => $("lapse-dialog").close());
   $("confirm-lapse").addEventListener("click", () => {
@@ -1477,12 +1218,11 @@
   setInterval(() => {
     if (!document.hidden) scheduleAutoSync(0);
   }, 30000);
-      setInterval(() => {
+  setInterval(() => {
     if (state.smoking.startedAt) {
-      updateSmokeClock();
-      renderBadges();
+      updateSmokeClock(Math.floor(currentSmokeRunMs(state) / 60000) !== lastSmokeMinute);
     }
-  }, 30000);
+  }, 1000);
     if ("serviceWorker" in navigator && location.protocol !== "file:") {
     window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(error => console.error("Offline support could not be enabled.", error)));
   }
