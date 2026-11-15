@@ -80,6 +80,31 @@
     { afterMs: 10 * 365.25 * 86400000, title: "A decade of change", label: "10 years", copy: "Lung cancer death risk can be about half that of someone who continues to smoke.", icon: "🌄" },
     { afterMs: 15 * 365.25 * 86400000, title: "A lasting horizon", label: "15 years", copy: "Coronary heart disease risk can approach that of someone who never smoked.", icon: "🌈" }
   ];
+  const FIRST_YEAR_QUIT_BADGES = [
+    [5, "A Fresh Start", "5 smoke-free minutes", "🌱"],
+    [15, "A Quiet Quarter", "15 smoke-free minutes", "🌿"],
+    [30, "Half-Hour Glow", "30 smoke-free minutes", "✨"],
+    [120, "Two Hours Strong", "2 smoke-free hours", "💫"],
+    [180, "Three-Hour Spark", "3 smoke-free hours", "🔥"],
+    [360, "Six-Hour Shift", "6 smoke-free hours", "🌤️"],
+    [720, "Half-Day Horizon", "12 smoke-free hours", "🌄"],
+    [1080, "Eighteen Hours Forward", "18 smoke-free hours", "🌙"]
+  ].map(([minutes, title, duration, icon]) => ({
+    afterMs: minutes * 60000, title, copy: `Reach ${duration}`, icon
+  }));
+  const firstYearDays = [
+    ...Array.from({ length: 28 }, (_, index) => index + 2).filter(day => day !== 5 && day !== 10),
+    ...Array.from({ length: 65 }, (_, index) => 31 + index * 5),
+    365
+  ];
+  const quitDayThemes = ["Steady Steps", "Growing Stronger", "A Clearer Path", "Fresh Momentum", "Your Own Pace", "Keep Shining"];
+  const quitDayIcons = ["🌿", "✨", "🌼", "🌤️", "💫", "🌱"];
+  FIRST_YEAR_QUIT_BADGES.push(...firstYearDays.map((day, index) => ({
+    afterMs: day * 86400000,
+    title: day === 365 ? "One Year, Yours" : `Day ${day} · ${quitDayThemes[index % quitDayThemes.length]}`,
+    copy: `Reach ${day} smoke-free days`,
+    icon: day === 365 ? "🏆" : quitDayIcons[index % quitDayIcons.length]
+  })));
   const QUIT_BADGES = [
     [3600000, "First Light", "Reach your first smoke-free hour", "✨"],
     [86400000, "First Sunrise", "Reach 1 smoke-free day", "🌅"],
@@ -93,7 +118,9 @@
     [6 * 365.25 * 86400000, "Renewed Horizon", "Reach 6 smoke-free years", "🌠"],
     [11 * 365.25 * 86400000, "The Long View", "Reach 11 smoke-free years", "💎"],
     [16 * 365.25 * 86400000, "Lasting Freedom", "Reach 16 smoke-free years", "👑"]
-  ].map(([afterMs, title, copy, icon]) => ({ afterMs, title, copy, icon }));
+  ].map(([afterMs, title, copy, icon]) => ({ afterMs, title, copy, icon }))
+    .concat(FIRST_YEAR_QUIT_BADGES)
+    .sort((a, b) => a.afterMs - b.afterMs);
   const EVOLUTION_STAGES = [
     { title: "A new signal" },
     { title: "Ignition" },
