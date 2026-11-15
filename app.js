@@ -2,12 +2,11 @@
   "use strict";
 
   const STORAGE_KEY = "superhuman-routine-v1";
-  const JOURNAL_DB = "superhuman-journal-v1";
-  const JOURNAL_STORE = "photos";
-  const SYNC_ENDPOINT = "https://femxqncjoppccywvecux.supabase.co/functions/v1/superhuman-sync";
+  const SUPABASE_URL = "https://txvlnkclbbyhsymarzqn.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uVxOvQrzACpa8Ug9Sm4n3w_K5llUi7Y";
+  const RECOVERY_KEY = "superhuman-pre-sync-recovery-v1";
+  const SYNC_ENDPOINT = `${SUPABASE_URL}/functions/v1/superhuman-sync`;
   const SYNC_MAX_PLAINTEXT_BYTES = 2.75 * 1024 * 1024;
-  const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
-  const MAX_PHOTO_EDGE = 1440;
   const MAX_TASKS = 25;
   const ICONS = [
     "💧", "🫧", "🌊", "🧘", "🪷", "🧠", "📖", "✍️", "🎧", "🎨",
@@ -107,21 +106,19 @@
   ];
 
   const $ = id => document.getElementById(id);
+  let appInitialized = false;
   let state = loadState();
+  let autoSync = null;
+  let autoSyncTimer = null;
+  let storageBlocked = false;
   let selectedIcon = ICONS[0];
   let editingId = null;
   let undoRecord = null;
   let toastTimer = null;
   let deferredInstall = null;
   let cravingInterval = null;
-  let journalPhotoBlob = null;
-  let journalNewPhotoSelected = false;
-  let journalPhotoUrl = null;
-  let journalEntryPhotoUrls = [];
   let journalEditingId = null;
   let journalSelectedMood = "steady";
-  let journalPhotoRemoved = false;
-  let journalRenderToken = 0;
   let journalDeleteId = null;
   const JOURNAL_MOODS = {
     steady: ["◉", "Steady"],
@@ -148,24 +145,33 @@
   function loadState() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (saved && Array.isArray(saved.tasks) && saved.completions && typeof saved.completions === "object") {
-        return {
-          tasks: saved.tasks.filter(t => t && typeof t.id === "string" && typeof t.name === "string").slice(0, MAX_TASKS),
-          completions: saved.completions,
-          routines: saved.routines && typeof saved.routines === "object" ? saved.routines : {},
-          smoking: normalizeSmoking(saved.smoking),
-          growthPoints: Number.isFinite(saved.growthPoints) && saved.growthPoints >= 0 ? saved.growthPoints : 0,
-          journal: Array.isArray(saved.journal) ? saved.journal.filter(entry =>
-            entry && typeof entry.id === "string" && typeof entry.createdAt === "string" &&
-            typeof entry.text === "string" && (entry.photoKey === null || typeof entry.photoKey === "string")
-          ) : [],
-          name: typeof saved.name === "string" ? saved.name : "Alex"
-        };
-      }
+      const normalized = normalizeStoredState(saved);
+      if (normalized) return normalized;
     } catch (error) {
       console.error("Could not read the saved routine.", error);
     }
     return { tasks: SEED_TASKS.map(task => ({ ...task })), completions: {}, routines: {}, smoking: normalizeSmoking(), growthPoints: 0, journal: [], name: "Alex" };
+  }
+
+  function normalizeStoredState(saved) {
+    if (!isRecord(saved) || !Array.isArray(saved.tasks) || !isRecord(saved.completions)) return null;
+    if (saved.tasks.length > MAX_TASKS
+      || saved.tasks.some(task => !isRecord(task) || typeof task.id !== "string" || typeof task.name !== "string")
+      || (saved.routines !== undefined && !isRecord(saved.routines))
+      || (saved.journal !== undefined && (!Array.isArray(saved.journal) || saved.journal.some(entry =>
+        !isRecord(entry) || typeof entry.id !== "string" || typeof entry.createdAt !== "string"
+        || typeof entry.text !== "string")))
+      || (saved.growthPoints !== undefined && (!Number.isFinite(saved.growthPoints) || saved.growthPoints < 0))
+      || (saved.name !== undefined && typeof saved.name !== "string")) return null;
+    return {
+      tasks: saved.tasks,
+      completions: saved.completions,
+      routines: isRecord(saved.routines) ? saved.routines : {},
+      smoking: normalizeSmoking(saved.smoking),
+      growthPoints: Number.isFinite(saved.growthPoints) && saved.growthPoints >= 0 ? saved.growthPoints : 0,
+      journal: (saved.journal || []).map(({ photoKey, ...entry }) => entry),
+      name: typeof saved.name === "string" ? saved.name : "Alex"
+    };
   }
 
   function normalizeSmoking(value) {
@@ -181,8 +187,13 @@
   }
 
   function save() {
+    if (storageBlocked) {
+      showToast("Saved data needs attention; changes were not saved.");
+      return false;
+    }
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (autoSync) autoSync.saveLocal(state, appInitialized);
+      else localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
     } catch (error) {
       console.error("Could not save your routine.", error);
@@ -191,65 +202,122 @@
     }
   }
 
-  function openJournalDatabase() {
-    return new Promise((resolve, reject) => {
-      if (!("indexedDB" in window)) {
-        reject(new Error("This browser does not support private photo storage."));
-        return;
+  async function createLocalRecoveryBackup() {
+    localStorage.setItem(RECOVERY_KEY, JSON.stringify(state));
+  }
+
+  async function restoreLocalRecovery() {
+    const backup = localStorage.getItem(RECOVERY_KEY);
+    if (!backup) throw new Error("No pre-sync recovery copy exists on this device.");
+    let restored;
+    try {
+      restored = validateSyncedState(JSON.parse(backup));
+    } catch (error) {
+      console.error("Could not read the local recovery copy.", error);
+      throw new Error("The pre-sync recovery copy is invalid; nothing was restored.");
+    }
+    const previous = state;
+    state = restored;
+    if (!save()) {
+      state = previous;
+      throw new Error("The recovery copy could not be saved on this device.");
+    }
+    render();
+  }
+
+  function validSyncMetadata(value) {
+    if (!isRecord(value) || value.version !== 1
+      || typeof value.writer !== "string"
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.writer)
+      || !Number.isSafeInteger(value.clock) || value.clock < 0
+      || !["fresh", "legacy", "ready"].includes(value.bootstrap)
+      || !isRecord(value.pending)
+      || (value.bootstrap === "legacy" && !isRecord(value.legacy))) return false;
+    return Object.entries(value.pending).every(([key, record]) =>
+      isRecord(record) && record.record_key === key && record.writer === value.writer
+      && Number.isSafeInteger(record.client_time) && record.client_time >= 0
+      && typeof record.deleted === "boolean"
+      && (record.deleted ? record.value === null : record.value !== undefined && record.value !== null));
+  }
+
+  function setAutoSyncStatus(message, isError = false) {
+    $("auto-sync-status").textContent = message;
+    $("auto-sync-status").dataset.error = String(isError);
+  }
+
+  function scheduleAutoSync(delay = 1500) {
+    if (!autoSync) return;
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => autoSync.run(), delay);
+  }
+
+  function renderSyncConflicts(conflicts) {
+    const container = $("auto-sync-conflicts");
+    container.replaceChildren();
+    const entries = Object.entries(conflicts);
+    container.hidden = !entries.length;
+    for (const [key, conflict] of entries) {
+      const section = document.createElement("section");
+      section.className = "auto-sync-conflict";
+      const title = document.createElement("strong");
+      title.textContent = `Choose a version for ${key}`;
+      const details = document.createElement("pre");
+      details.textContent = `This device:\n${JSON.stringify(conflict.local, null, 2)}\n\nCloud:\n${conflict.remote.deleted ? "(deleted)" : JSON.stringify(conflict.remote.value, null, 2)}`;
+      section.append(title, details);
+      for (const [choice, label] of [["local", "Keep this device"], ["remote", "Keep cloud"]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "sync-secondary-button";
+        button.textContent = label;
+        button.addEventListener("click", () => {
+          try {
+            autoSync.resolveConflict(key, choice);
+          } catch (error) {
+            console.error("Could not resolve the sync conflict.", error);
+            setAutoSyncStatus(error instanceof Error ? error.message : "Could not resolve the conflict.", true);
+          }
+        });
+        section.append(button);
       }
-      const request = indexedDB.open(JOURNAL_DB, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(JOURNAL_STORE)) {
-          request.result.createObjectStore(JOURNAL_STORE);
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("Could not open private photo storage."));
-      request.onblocked = () => reject(new Error("Photo storage is busy in another tab. Close other app tabs and try again."));
-    });
-  }
-
-  async function storeJournalPhoto(key, blob) {
-    const database = await openJournalDatabase();
-    try {
-      await new Promise((resolve, reject) => {
-        const transaction = database.transaction(JOURNAL_STORE, "readwrite");
-        transaction.objectStore(JOURNAL_STORE).put(blob, key);
-        transaction.oncomplete = resolve;
-        transaction.onerror = () => reject(transaction.error || new Error("Could not save your photo on this device."));
-        transaction.onabort = () => reject(transaction.error || new Error("Photo storage ran out of space."));
-      });
-    } finally {
-      database.close();
+      container.append(section);
     }
   }
 
-  async function readJournalPhoto(key) {
-    const database = await openJournalDatabase();
+  function initializeAutoSync() {
     try {
-      return await new Promise((resolve, reject) => {
-        const request = database.transaction(JOURNAL_STORE, "readonly").objectStore(JOURNAL_STORE).get(key);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error || new Error("Could not load this journal photo."));
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const saved = raw === null ? null : JSON.parse(raw);
+      if (raw !== null && !normalizeStoredState(saved)) {
+        throw new Error("Saved local data is invalid. No changes were made.");
+      }
+      if (saved) validateSyncedState(normalizeStoredState(saved));
+      let metadata = saved && saved._sync;
+      if (saved && Object.prototype.hasOwnProperty.call(saved, "_sync") && !validSyncMetadata(metadata)) {
+        throw new Error("Saved sync data is invalid. No changes were made.");
+      }
+      if (!metadata) metadata = SuperhumanSyncCore.createMetadata(crypto.randomUUID(), saved !== null, SuperhumanSyncCore.recordsFromState(state));
+      const transport = SuperhumanSyncTransport.createTransport(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      autoSync = SuperhumanAutoSync.create({
+        state,
+        metadata,
+        transport,
+        now: () => Date.now(),
+        persist: (nextState, nextMetadata) => localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...nextState, _sync: nextMetadata })),
+        createRecoveryBackup: createLocalRecoveryBackup,
+        validateState: validateSyncedState,
+        onState: nextState => { state = nextState; render(); },
+        onPending: () => {
+          setAutoSyncStatus("Changes are waiting to sync.");
+          scheduleAutoSync();
+        },
+        onConflicts: renderSyncConflicts,
+        onStatus: setAutoSyncStatus,
+        onError: error => console.error("Automatic sync failed.", error)
       });
-    } finally {
-      database.close();
-    }
-  }
-
-  async function removeJournalPhoto(key) {
-    if (!key) return;
-    const database = await openJournalDatabase();
-    try {
-      await new Promise((resolve, reject) => {
-        const transaction = database.transaction(JOURNAL_STORE, "readwrite");
-        transaction.objectStore(JOURNAL_STORE).delete(key);
-        transaction.oncomplete = resolve;
-        transaction.onerror = () => reject(transaction.error || new Error("Could not remove the saved journal photo."));
-        transaction.onabort = () => reject(transaction.error || new Error("Could not remove the saved journal photo."));
-      });
-    } finally {
-      database.close();
+    } catch (error) {
+      storageBlocked = true;
+      console.error("Could not safely initialize automatic sync.", error);
+      setAutoSyncStatus(error instanceof Error ? error.message : "Could not initialize automatic sync.", true);
     }
   }
 
@@ -341,26 +409,14 @@
     return result;
   }
 
-  async function createEncryptedBackup(encryptionKey) {
-    const photos = [];
-    for (const entry of state.journal || []) {
-      if (!entry.photoKey) continue;
-      const photo = await readJournalPhoto(entry.photoKey);
-      if (!photo) throw new Error("A saved journal photo is missing on this device. The backup was not uploaded.");
-      photos.push({
-        key: entry.photoKey,
-        type: photo.type || "image/jpeg",
-        data: bytesToBase64(new Uint8Array(await photo.arrayBuffer()))
-      });
-    }
+  async function createBackupDocument() {
+    return { version: 2, state: structuredClone(state) };
+  }
 
-    const plaintext = new TextEncoder().encode(JSON.stringify({
-      version: 1,
-      state,
-      photos
-    }));
+  async function createEncryptedBackup(encryptionKey) {
+    const plaintext = new TextEncoder().encode(JSON.stringify(await createBackupDocument()));
     if (plaintext.byteLength > SYNC_MAX_PLAINTEXT_BYTES) {
-      throw new Error("This backup is too large to sync in one encrypted transfer. Remove some journal photos and try again.");
+      throw new Error("This backup is too large to sync in one encrypted transfer. Use the independent file backup instead.");
     }
 
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -392,7 +448,7 @@
       console.error("The decrypted sync backup is not valid JSON.", error);
       throw new Error("The decrypted backup is damaged and was not restored.");
     }
-    if (!document || document.version !== 1 || !document.state || !Array.isArray(document.photos)) {
+    if (!isRecord(document) || ![1, 2].includes(document.version) || !isRecord(document.state)) {
       throw new Error("The cloud backup has an unsupported format.");
     }
     return document;
@@ -404,7 +460,8 @@
 
   function validateSyncedState(value) {
     if (!isRecord(value) || !Array.isArray(value.tasks) || value.tasks.length > MAX_TASKS
-      || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal)) {
+      || !isRecord(value.completions) || !isRecord(value.routines) || !Array.isArray(value.journal)
+) {
       throw new Error("The backup data is incomplete or invalid; nothing was restored.");
     }
     if (value.tasks.some(task => !isRecord(task) || typeof task.id !== "string" || typeof task.name !== "string")) {
@@ -424,8 +481,7 @@
       || typeof entry.id !== "string"
       || typeof entry.createdAt !== "string"
       || !Number.isFinite(Date.parse(entry.createdAt))
-      || typeof entry.text !== "string"
-      || !(entry.photoKey === null || typeof entry.photoKey === "string"))) {
+      || typeof entry.text !== "string")) {
       throw new Error("The backup contains an invalid journal entry; nothing was restored.");
     }
     return {
@@ -434,75 +490,20 @@
       routines: value.routines,
       smoking: normalizeSmoking(value.smoking),
       growthPoints: Number.isFinite(value.growthPoints) && value.growthPoints >= 0 ? value.growthPoints : 0,
-      journal: value.journal.map(entry => ({ ...entry })),
+      journal: value.journal.map(({ photoKey, ...entry }) => entry),
       name: typeof value.name === "string" ? value.name : "Alex"
     };
   }
 
   async function restoreEncryptedBackup(document) {
     const nextState = validateSyncedState(document.state);
-    const referencedPhotos = new Set(nextState.journal.map(entry => entry.photoKey).filter(Boolean));
-    const photos = new Map();
-    for (const photo of document.photos) {
-      if (!isRecord(photo) || typeof photo.key !== "string" || typeof photo.type !== "string"
-        || !photo.type.startsWith("image/") || typeof photo.data !== "string" || photos.has(photo.key)) {
-        throw new Error("The backup contains an invalid journal photo; nothing was restored.");
-      }
-      const bytes = base64ToBytes(photo.data);
-      if (bytes.byteLength > MAX_PHOTO_BYTES) {
-        throw new Error("A journal photo in this backup is too large; nothing was restored.");
-      }
-      photos.set(photo.key, new Blob([bytes], { type: photo.type }));
-    }
-    for (const photoKey of referencedPhotos) {
-      if (!photos.has(photoKey)) throw new Error("A journal photo is missing from this backup; nothing was restored.");
-    }
-    if ([...photos.keys()].some(key => !referencedPhotos.has(key))) {
-      throw new Error("The backup contains an unlinked journal photo; nothing was restored.");
-    }
-
-    const remappedKeys = new Map();
-    const stagedPhotos = [];
-    for (const [key, blob] of photos) {
-      const localKey = `photo-${crypto.randomUUID()}`;
-      remappedKeys.set(key, localKey);
-      stagedPhotos.push([localKey, blob]);
-    }
-    nextState.journal = nextState.journal.map(entry => ({
-      ...entry,
-      photoKey: entry.photoKey ? remappedKeys.get(entry.photoKey) : null
-    }));
-
-    const storedKeys = [];
     const previousState = state;
-    let stateSaved = false;
-    try {
-      for (const [key, blob] of stagedPhotos) {
-        await storeJournalPhoto(key, blob);
-        storedKeys.push(key);
-      }
-      state = nextState;
-      if (!save()) {
-        throw new Error("The backup could not be saved on this device. Free some browser storage and try again.");
-      }
-      stateSaved = true;
-      render();
-      await renderJournal();
-    } catch (error) {
+    state = nextState;
+    if (!save()) {
       state = previousState;
-      if (stateSaved && !save()) {
-        console.error("Could not restore local data after an incomplete sync restore.");
-        error = new Error("The restore failed and the previous local data could not be fully restored. Reload the app and check your data.");
-      }
-      for (const key of storedKeys) {
-        try {
-          await removeJournalPhoto(key);
-        } catch (cleanupError) {
-          console.error("Could not clean up an incomplete sync restore.", cleanupError);
-        }
-      }
-      throw error;
+      throw new Error("The backup could not be saved on this device. Free some browser storage and try again.");
     }
+    render();
   }
 
   async function runSyncOperation(operation) {
@@ -525,32 +526,6 @@
     return Number.isFinite(date.getTime())
       ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date)
       : "just now";
-  }
-
-  function optimizeJournalPhoto(file) {
-    return new Promise((resolve, reject) => {
-      createImageBitmap(file).then(bitmap => {
-        const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        const context = canvas.getContext("2d");
-        if (!context) {
-          bitmap.close();
-          reject(new Error("This browser could not prepare the photo."));
-          return;
-        }
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        bitmap.close();
-        canvas.toBlob(blob => {
-          if (!blob) {
-            reject(new Error("This browser could not prepare the photo."));
-            return;
-          }
-          resolve(blob);
-        }, "image/jpeg", .82);
-      }).catch(() => reject(new Error("That image could not be opened. Try another photo.")));
-    });
   }
 
   function completionFor(dateKey) {
@@ -741,47 +716,28 @@
   }
 
   async function renderJournal() {
-    const token = ++journalRenderToken;
-    journalEntryPhotoUrls.forEach(url => URL.revokeObjectURL(url));
-    journalEntryPhotoUrls = [];
     const entries = [...(state.journal || [])].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     $("journal-entry-count").textContent = `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`;
     $("journal-today-label").textContent = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(new Date());
     $("journal-char-count").textContent = `${$("journal-text").value.length} / 3000`;
     $("journal-error").hidden = true;
     if (!entries.length) {
-      $("journal-entries").innerHTML = '<div class="journal-empty"><span aria-hidden="true">✧</span><h3>Your first page is waiting.</h3><p>A sentence, a photo, a small thing you noticed. It all belongs here.</p></div>';
+      $("journal-entries").innerHTML = '<div class="journal-empty"><span aria-hidden="true">✧</span><h3>Your first page is waiting.</h3><p>A sentence or a small thing you noticed. It all belongs here.</p></div>';
       return;
     }
 
     const cards = [];
     for (const entry of entries) {
-      let photo = "";
-      if (entry.photoKey) {
-        try {
-          const blob = await readJournalPhoto(entry.photoKey);
-          if (blob) {
-            const url = URL.createObjectURL(blob);
-            journalEntryPhotoUrls.push(url);
-            photo = `<img class="journal-entry-photo" src="${url}" alt="Photo saved with this journal entry" loading="lazy">`;
-          } else {
-            photo = '<p class="journal-missing-photo">This photo is no longer available on this device.</p>';
-          }
-        } catch (error) {
-          console.error("Could not load a saved journal photo.", error);
-          photo = '<p class="journal-missing-photo">This photo could not be loaded.</p>';
-        }
-      }
       const date = new Date(entry.createdAt);
       const mood = JOURNAL_MOODS[entry.mood] || JOURNAL_MOODS.steady;
       const text = entry.text ? `<p class="journal-entry-text">${escapeHtml(entry.text)}</p>` : "";
       cards.push(`<article class="journal-entry-card" data-entry-id="${escapeHtml(entry.id)}">
         <header class="journal-entry-header"><div><p class="journal-entry-date">${new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(date)}</p><span class="journal-entry-time">${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date)}</span></div><span class="journal-mood mood-${escapeHtml(entry.mood)}"><i>${mood[0]}</i>${escapeHtml(mood[1])}</span></header>
-        ${photo}${text}
+        ${text}
         <footer class="journal-entry-actions"><button type="button" data-journal-action="edit">Edit page</button><button type="button" data-journal-action="delete">Delete</button></footer>
       </article>`);
     }
-    if (token === journalRenderToken) $("journal-entries").innerHTML = cards.join("");
+    $("journal-entries").innerHTML = cards.join("");
   }
 
   function renderHistory() {
@@ -1111,32 +1067,15 @@
     }, 1000);
   }
 
-  function setJournalPhotoPreview(blob, filename = "Saved photo") {
-    if (journalPhotoUrl) URL.revokeObjectURL(journalPhotoUrl);
-    journalPhotoUrl = blob ? URL.createObjectURL(blob) : null;
-    $("journal-photo-preview").hidden = !blob;
-    if (blob) {
-      $("journal-photo-image").src = journalPhotoUrl;
-      $("journal-photo-image").alt = `${filename} preview`;
-    } else {
-      $("journal-photo-image").removeAttribute("src");
-    }
-  }
-
   function clearJournalEditor() {
     journalEditingId = null;
-    journalPhotoBlob = null;
-    journalPhotoRemoved = false;
-    journalNewPhotoSelected = false;
     journalSelectedMood = "steady";
     $("journal-text").value = "";
-    $("journal-photo-file").value = "";
     $("journal-form-title").textContent = "A note to yourself";
     $("journal-save-button").textContent = "Save entry";
     $("journal-cancel-edit").hidden = true;
     $("journal-error").hidden = true;
     $("journal-error").textContent = "";
-    setJournalPhotoPreview(null);
     for (const button of $("mood-picker").querySelectorAll("[data-mood]")) {
       const selected = button.dataset.mood === "steady";
       button.classList.toggle("is-selected", selected);
@@ -1149,9 +1088,6 @@
     const entry = state.journal.find(item => item.id === id);
     if (!entry) return;
     journalEditingId = id;
-    journalPhotoRemoved = false;
-    journalNewPhotoSelected = false;
-    journalPhotoBlob = null;
     journalSelectedMood = JOURNAL_MOODS[entry.mood] ? entry.mood : "steady";
     $("journal-text").value = entry.text;
     $("journal-form-title").textContent = "Revisit this page";
@@ -1163,27 +1099,6 @@
       const selected = button.dataset.mood === journalSelectedMood;
       button.classList.toggle("is-selected", selected);
       button.setAttribute("aria-pressed", String(selected));
-    }
-    if (entry.photoKey) {
-      try {
-        const blob = await readJournalPhoto(entry.photoKey);
-        if (journalEditingId !== id) return;
-        if (blob) {
-          journalPhotoBlob = blob;
-          setJournalPhotoPreview(blob);
-        } else {
-          journalPhotoRemoved = true;
-          $("journal-error").textContent = "The original photo is not available on this device. You can attach another one.";
-          $("journal-error").hidden = false;
-          setJournalPhotoPreview(null);
-        }
-      } catch (error) {
-        console.error("Could not load a journal photo for editing.", error);
-        $("journal-error").textContent = "Could not load that photo. Your saved entry is unchanged.";
-        $("journal-error").hidden = false;
-      }
-    } else {
-      setJournalPhotoPreview(null);
     }
     $("journal-text").focus();
     $("journal-view").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1296,35 +1211,6 @@
   $("journal-text").addEventListener("input", () => {
     $("journal-char-count").textContent = `${$("journal-text").value.length} / 3000`;
   });
-  $("journal-photo-button").addEventListener("click", () => $("journal-photo-file").click());
-  $("journal-photo-file").addEventListener("change", () => {
-    const file = $("journal-photo-file").files[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      $("journal-error").textContent = "Choose an image file to add a photo.";
-      $("journal-error").hidden = false;
-      $("journal-photo-file").value = "";
-      return;
-    }
-    if (file.size > MAX_PHOTO_BYTES) {
-      $("journal-error").textContent = "That image is over 10 MB. Choose a smaller photo.";
-      $("journal-error").hidden = false;
-      $("journal-photo-file").value = "";
-      return;
-    }
-    journalPhotoBlob = file;
-    journalPhotoRemoved = false;
-    journalNewPhotoSelected = true;
-    $("journal-error").hidden = true;
-    setJournalPhotoPreview(file, file.name);
-  });
-  $("journal-remove-photo").addEventListener("click", () => {
-    journalPhotoBlob = null;
-    journalPhotoRemoved = true;
-    journalNewPhotoSelected = false;
-    $("journal-photo-file").value = "";
-    setJournalPhotoPreview(null);
-  });
   $("mood-picker").addEventListener("click", event => {
     const button = event.target.closest("[data-mood]");
     if (!button) return;
@@ -1342,8 +1228,8 @@
   $("journal-entry-form").addEventListener("submit", async event => {
     event.preventDefault();
     const text = $("journal-text").value.trim();
-    if (!text && !journalPhotoBlob) {
-      $("journal-error").textContent = "Write a little note or add a photo before saving.";
+    if (!text) {
+      $("journal-error").textContent = "Write a little note before saving.";
       $("journal-error").hidden = false;
       return;
     }
@@ -1352,24 +1238,15 @@
     button.textContent = "Saving…";
     $("journal-error").hidden = true;
     const previousJournal = state.journal;
-    let newPhotoKey = null;
     try {
       const existing = journalEditingId ? state.journal.find(entry => entry.id === journalEditingId) : null;
-      let photoKey = journalPhotoRemoved ? null : existing?.photoKey || null;
-      if (journalNewPhotoSelected && journalPhotoBlob) {
-        newPhotoKey = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const optimized = await optimizeJournalPhoto(journalPhotoBlob);
-        await storeJournalPhoto(newPhotoKey, optimized);
-        photoKey = newPhotoKey;
-      }
       const now = new Date().toISOString();
       const next = {
         id: existing?.id || `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         createdAt: existing?.createdAt || now,
         updatedAt: now,
         text,
-        mood: journalSelectedMood,
-        photoKey
+        mood: journalSelectedMood
       };
       state.journal = existing
         ? state.journal.map(entry => entry.id === existing.id ? next : entry)
@@ -1378,26 +1255,11 @@
         state.journal = previousJournal;
         throw new Error("Your entry could not be saved on this device. Free some browser storage and try again.");
       }
-      if (existing?.photoKey && existing.photoKey !== photoKey) {
-        try {
-          await removeJournalPhoto(existing.photoKey);
-        } catch (error) {
-          console.error("Could not remove a replaced journal photo.", error);
-          showToast("Entry saved, but its replaced photo could not be removed.");
-        }
-      }
       clearJournalEditor();
       await renderJournal();
-      showToast(existing ? "Your page was updated." : "A moment saved, just for you.");
+      showToast(existing ? "Your page was updated." : "A moment saved.");
     } catch (error) {
       console.error("Could not save your journal entry.", error);
-      if (newPhotoKey && state.journal === previousJournal) {
-        try {
-          await removeJournalPhoto(newPhotoKey);
-        } catch (cleanupError) {
-          console.error("Could not clean up an unsaved journal photo.", cleanupError);
-        }
-      }
       $("journal-error").textContent = error instanceof Error ? error.message : "Could not save the journal entry. Try again.";
       $("journal-error").hidden = false;
       button.textContent = journalEditingId ? "Save changes" : "Save entry";
@@ -1442,14 +1304,6 @@
         state.journal = previousJournal;
         throw new Error("Your entry could not be removed from this device. Free some browser storage and try again.");
       }
-      if (entry.photoKey) {
-        try {
-          await removeJournalPhoto(entry.photoKey);
-        } catch (photoError) {
-          console.error("Could not remove a deleted journal photo.", photoError);
-          showToast("Entry removed, but its photo could not be cleared from this device.");
-        }
-      }
       if (journalEditingId === entry.id) clearJournalEditor();
       closeJournalDeleteDialog();
       await renderJournal();
@@ -1463,12 +1317,77 @@
       button.disabled = false;
     }
   });
-  $("profile-button").addEventListener("click", () => {
+  $("backup-nav-button").addEventListener("click", () => {
     updateSyncControls();
     $("sync-dialog").showModal();
   });
   $("close-sync-dialog").addEventListener("click", () => $("sync-dialog").close());
-  $("sync-code").addEventListener("input", updateSyncControls);
+  $("export-file-backup").addEventListener("click", async () => {
+    const button = $("export-file-backup");
+    const status = $("file-backup-status");
+    button.disabled = true;
+    try {
+      status.textContent = "Preparing your unencrypted backup file…";
+      const backup = await createBackupDocument();
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `superhuman-backup-${localDateKey()}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      status.textContent = "Backup download started. Store the file somewhere safe.";
+    } catch (error) {
+      console.error("Could not export the backup file.", error);
+      status.textContent = error instanceof Error ? error.message : "Could not export the backup file.";
+    } finally {
+      button.disabled = false;
+    }
+  });
+  $("import-file-backup").addEventListener("click", () => $("backup-file").click());
+  $("backup-file").addEventListener("change", async () => {
+    const input = $("backup-file");
+    const file = input.files[0];
+    if (!file) return;
+    if (!window.confirm("Restore this backup file? It replaces this device's current data and will sync the restored changes.")) {
+      input.value = "";
+      return;
+    }
+    const button = $("import-file-backup");
+    const status = $("file-backup-status");
+    button.disabled = true;
+    try {
+      status.textContent = "Reading your backup file…";
+      const backup = JSON.parse(await file.text());
+      if (!isRecord(backup) || ![1, 2].includes(backup.version) || !isRecord(backup.state)) {
+        throw new Error("This file is not a supported Superhuman backup.");
+      }
+      await restoreEncryptedBackup(backup);
+      status.textContent = "Backup file restored on this device.";
+    } catch (error) {
+      console.error("Could not restore the backup file.", error);
+      status.textContent = error instanceof Error ? error.message : "Could not restore the backup file.";
+    } finally {
+      input.value = "";
+      button.disabled = false;
+    }
+  });
+  $("restore-local-recovery").addEventListener("click", async () => {
+    if (!window.confirm("Restore the local pre-sync copy? This replaces this device's current data and will sync the restored changes.")) return;
+    const button = $("restore-local-recovery");
+    button.disabled = true;
+    try {
+      await restoreLocalRecovery();
+      setSyncStatus("The pre-sync copy was restored on this device.");
+    } catch (error) {
+      console.error("Could not restore the local recovery copy.", error);
+      setSyncStatus(error instanceof Error ? error.message : "Could not restore the local recovery copy.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+              $("sync-code").addEventListener("input", updateSyncControls);
   $("generate-sync-code").addEventListener("click", () => {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     $("sync-code").value = bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -1487,7 +1406,7 @@
     }
   });
   $("upload-sync").addEventListener("click", () => {
-    if (!window.confirm("Upload this device's routine, quit history, journal, and photos? This replaces the cloud backup for this sync code; it does not merge devices.")) return;
+    if (!window.confirm("Upload this device's routine, quit history, and journal? This replaces the cloud backup for this sync code; it does not merge devices.")) return;
     runSyncOperation(async () => {
       setSyncStatus("Encrypting your data on this device…");
       const credentials = await deriveSyncCredentials();
@@ -1497,7 +1416,7 @@
     });
   });
   $("restore-sync").addEventListener("click", () => {
-    if (!window.confirm("Restore the cloud backup to this device? This replaces this device's routine, quit history, journal, and photos.")) return;
+    if (!window.confirm("Restore the cloud backup to this device? This replaces this device's routine, quit history, and journal.")) return;
     runSyncOperation(async () => {
       setSyncStatus("Checking for an encrypted cloud backup…");
       const credentials = await deriveSyncCredentials();
@@ -1602,20 +1521,41 @@
   });
   window.addEventListener("storage", event => {
     if (event.key === STORAGE_KEY) {
-      state = loadState();
-      render();
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        const nextState = normalizeStoredState(saved);
+        if (!nextState || !validSyncMetadata(saved._sync)) {
+          throw new Error("Data changed in another tab without compatible sync information. Reload after closing the other tab.");
+        }
+        state = nextState;
+        if (autoSync) autoSync.replaceFromStorage(state, saved._sync);
+        render();
+        scheduleAutoSync();
+      } catch (error) {
+        storageBlocked = true;
+        console.error("Could not safely read data from another tab.", error);
+        setAutoSyncStatus(error instanceof Error ? error.message : "Could not read data from another tab.", true);
+      }
     }
   });
-
+  window.addEventListener("online", () => scheduleAutoSync(0));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleAutoSync(0);
+  });
   setInterval(() => {
+    if (!document.hidden) scheduleAutoSync(0);
+  }, 30000);
+      setInterval(() => {
     if (state.smoking.startedAt) {
       updateSmokeClock();
       renderBadges();
     }
   }, 30000);
-
-  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    if ("serviceWorker" in navigator && location.protocol !== "file:") {
     window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(error => console.error("Offline support could not be enabled.", error)));
   }
+  initializeAutoSync();
   render();
-})();
+  appInitialized = true;
+  scheduleAutoSync(0);
+  })();

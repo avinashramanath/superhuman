@@ -1,14 +1,22 @@
 # Superhuman
 
-Superhuman is an iPhone-first daily routine tracker built as a static progressive web app. It starts with a customizable five-task sample routine and stores routine and completion history in this browser's local storage. There is no account; data stays on this device unless you explicitly choose private sync.
+Superhuman is an iPhone-first daily routine tracker built as a static progressive web app. It starts with a customizable five-task sample routine and saves data locally, with automatic cross-device synchronization when its Supabase sync backend is configured.
 
 The interface uses a dark neon visual theme, groups tasks into distinct sections, offers 60 task icons, and awards milestone badges for task completions, full routine days, and streaks up to 365 days. The **Better me** progress core grows with routine tasks, full days, and streaks; its lifetime growth record remains after missed days.
 
 The **Conquer smoking** view lets you start a smoke-free timer, optionally enter your usual daily cigarette count and pack price, take a two-minute craving pause, and record a slip. It includes a dedicated set of smoke-free badges and a health-benefit timeline adapted from the FNHA “The Benefits of Quitting Smoking” poster shared with the project. A slip restarts the current timer without deleting earlier attempts or the best smoke-free run; the app responds without judgment. Cigarette and savings counts are rough estimates from the current timer and the personal values entered. The tracker is not medical advice or a substitute for professional cessation support.
 
-The **Journal** supports private text and mood entries with one optional photo per entry and a wider range of moods. Saved entries show their mood and photo. Text and metadata are saved in this browser's local storage; resized photos are saved in this browser's IndexedDB. Entries and photos stay on this device unless you explicitly include them in an encrypted sync backup. Clearing browser site data, uninstalling the browser, or switching devices may remove or leave entries behind.
+The **Journal** supports text and mood entries, saved in this browser's local storage. Clearing browser site data or uninstalling the browser may remove local entries.
 
-Routine, smoking, and journal data remain on this device by default. Sync is manual and opt-in; the app does not automatically upload changes.
+**Automatic sync is public, not private.** Anyone can read or change the shared routine, history, smoking data and journal directly through the backend, even without the website URL. Anyone can delete records or submit data and consume storage or other usage. A publishable key, obscure URL or CORS settings do not prevent this. Do not store anything you want to keep private.
+
+Local edits are queued and synced after a short delay, at startup, when the app returns online or becomes visible, and periodically while visible. The status above the routine reports pending changes and errors. Keep the app open until it reports that changes are synced; browsers can suspend or close background apps. When offline or when the backend is unavailable, changes remain on the device and are retried.
+
+Use only one open Superhuman tab or window per browser at a time. Simultaneous tabs share local storage and can overwrite each other's changes before they sync.
+
+Different records merge independently. Conflicting edits to the same record use the latest device timestamp, with a deterministic device-ID tie-breaker; incorrect device clocks can therefore choose the wrong version. Lifetime growth uses the highest value. During first-time migration, older local values without timestamps that disagree with the cloud require an explicit choice under **Sync**. A local recovery copy is created before migration; it can be restored under **Sync**. Existing account-only cloud data is not automatically imported: recover it to a device using the older account-enabled app before migrating.
+
+The app no longer stores or syncs journal photos. Previously saved photo files, if any, are not automatically deleted from browser storage or any existing cloud bucket. The public records do not use or modify Project Zero's existing `public.project_zero_state` table.
 
 ## Run locally
 
@@ -20,15 +28,21 @@ python -m http.server 8000
 
 Open `http://localhost:8000`. On iPhone, visit the deployed HTTPS site in Safari and choose **Share → Add to Home Screen**.
 
-## Private sync
+## Sync setup and deployment
 
-Private sync is available as an optional, manual backup across devices. Open **Private sync settings** from the profile button and generate or enter the same 43-character sync code on each device. The app never saves the code; keep it private and store a copy somewhere safe. Anyone with the code can access that sync space, and a lost code cannot be recovered.
+The automatic sync backend is defined in `supabase/migrations/20261115000000_superhuman_public_sync.sql`. It creates a separate public record store and RPC functions. Review the migration and its public access policies before applying it to the correct Supabase project. Verify existing migration history first; do not blindly apply unrelated account migrations or alter existing Project Zero data. The frontend uses the project URL and publishable key in `app.js`; these values are public, not secrets. Never put a service-role key in the frontend.
 
-Before upload, the browser encrypts routine data, quit history, journal entries, and photos with AES-GCM using a key derived from the sync code. Supabase receives the encrypted backup, an opaque sync identifier, and an update time—not the plaintext or the code. Backups are limited to 2.75 MiB of plaintext per transfer.
+Test the migration and the complete two-device flow in an isolated Supabase project or branch before applying it to production. A Supabase development branch can incur charges. After applying the migration, publish the frontend and verify that the sync status reaches **All changes synced** on both devices, including an offline edit and recovery from an independent backup. Until the migration is deployed, the app continues to save locally but reports sync errors.
 
-Sync is hosted in a dedicated `superhuman` schema in the existing **Project Zero** Supabase project. Its `sync_vault` table has row-level security enabled and is inaccessible to anonymous and authenticated database roles; only the Edge Function can access it with the project service role. The existing `public.project_zero_state` table is separate and is not used by Superhuman sync. The `superhuman-sync` Edge Function is deployed and uses Supabase's built-in `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment variables.
+## Backup and restore
 
-Upload replaces the cloud backup for that code; restore replaces this device's routine, quit history, journal, and photos; delete removes the cloud backup. Each operation requires an explicit confirmation. Sync does not merge devices or run automatically. Local browser storage is not encrypted at rest, and this feature does not replace a separate device backup.
+Automatic sync is not an independent backup: accidental or unauthorized changes can propagate. Use **Sync → Independent file backup → Export backup file** to download a separate JSON copy of routine, history, quit data and journal. The file is **not encrypted**; store it securely outside this browser and the Supabase project. Restore it using **Restore backup file**; restoration replaces this device's current data and queues the restored changes for public sync. Large exports or imports can exhaust browser memory or storage; errors are shown and a failed restore should not replace the previous state. Regularly test recovery on a separate device or browser.
+
+The separate **Manage encrypted backup** controls are disabled because the `superhuman-sync` Edge Function and encrypted vault are not configured in the new Superhuman project. Use the independent file backup instead. Previously created encrypted backups remain in their original project and are not automatically migrated. Re-enabling the controls requires configuring and testing that backend. The feature encrypts the backup with AES-GCM in the browser before a manual upload. It is not automatic, has a 2.75 MiB plaintext limit per transfer, and uses the same Supabase project, so it is not independent of project failure. Anyone with the sync code can access that encrypted backup. Keep the code safe; it cannot be recovered by the app.
+
+For long-term use, monitor the project's billing and database quotas and set appropriate alerts. Supabase can [pause low-activity Free projects](https://supabase.com/docs/guides/platform/free-project-pausing); check its current restore window and terms. Arrange and test independent, scheduled database backups appropriate to your plan; the repository does not configure scheduled backups. Paid plans and external backup services may incur charges.
+
+Local browser storage is not encrypted by the app. Sync, local recovery copies and the optional backup mechanisms do not guarantee retention against device failure, abuse, provider outages or quota exhaustion.
 
 ## Public website and automatic updates
 
@@ -41,4 +55,4 @@ To connect the repository for the first time:
 3. If GitHub Pages is not enabled automatically, open the repository's **Settings → Pages** and set the build and deployment source to **GitHub Actions**.
 4. Open the published URL shown under **Settings → Pages** or in the completed **Deploy Superhuman to GitHub Pages** workflow.
 
-For future updates, make and push a commit to `main`; the same workflow republishes the site. The app's routines, quit tracking, and journal remain in each browser's local storage unless you explicitly use the manual encrypted sync described above. Publishing the website does not make personal data public.
+For future updates, make and push a commit to `main`; the same workflow republishes the site. The website itself is public, and the automatic sync backend also makes synced data public as described above.
